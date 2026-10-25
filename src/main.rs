@@ -95,11 +95,26 @@ impl App {
 
     fn save(&self) {
         let stored = self.stored.lock().unwrap();
-        if let Ok(json) = serde_json::to_string_pretty(&*stored) {
-            if let Some(dir) = store_path().parent() {
-                let _ = std::fs::create_dir_all(dir);
+        let Ok(json) = serde_json::to_string_pretty(&*stored) else {
+            return;
+        };
+        let path = store_path();
+        if let Some(dir) = path.parent() {
+            if let Err(err) = std::fs::create_dir_all(dir) {
+                eprintln!(
+                    "open-razor: could not create {}: {err}",
+                    dir.display()
+                );
+                return;
             }
-            let _ = std::fs::write(store_path(), json);
+        }
+        // A read-only home is worth a word rather than a silent loss of presets.
+        if let Err(err) = std::fs::write(&path, json) {
+            eprintln!(
+                "open-razor: could not save state to {}: {err}\n\
+                 presets will not persist until that path is writable",
+                path.display()
+            );
         }
     }
 
