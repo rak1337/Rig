@@ -1,0 +1,116 @@
+# Open Razor
+
+A lighting console for Razer keyboards on macOS. It talks to the keyboard over USB
+directly — no Razer Synapse, no kernel extension, no Electron — and serves its own
+interface in the browser.
+
+It exists because Razer never shipped working macOS support for legacy Chroma
+hardware. The Synapse build available for this board on macOS is the old
+Synapse 2-era client (`0.8.10`), whose bundle contains no device database at all:
+no entry for `1532:0209`, no "BlackWidow" string anywhere. The protocol, however,
+was documented years ago by the OpenRazer project, and it is portable.
+
+## Verified on hardware
+
+Razer BlackWidow Tournament Edition Chroma, `1532:0209`, firmware `1.03`.
+Every command below returns status `0x02` (successful) from the device.
+
+- **Effects** — Static, Wave (left/right), Spectrum, Breathing (one colour, two
+  colours, random), Reactive (speed 1–4), Off
+- **Brightness** — 0–100, mapped to the device's 0–255 level
+- **Custom frames** — paint individual keys in the 6 × 22 LED matrix using the
+  board's real key map, or fill the whole board
+- **Presets** — save the current look, apply it later, delete it
+- **Gaming mode** — locks the Windows key, lights the game indicator
+- **Macro indicator** — toggles the macro LED
+- **Driver mode** — hand the LEDs back to the keyboard's firmware, or take them over
+- **Restore on launch** — the last state is re-applied when the service starts
+
+## Build and run
+
+```sh
+cargo build --release
+./target/release/open-razor
+```
+
+It listens on `http://127.0.0.1:7311` and opens the console in your browser.
+
+```sh
+open-razor [--port 7311] [--no-open] [--no-restore]
+open-razor --test          # round-trip a report to the keyboard and exit
+```
+
+State and presets live in `~/Library/Application Support/OpenRazor/state.json`.
+
+## Permission
+
+macOS gates keyboard HID access behind **Input Monitoring**. On first run the app
+asks for it; if it is missing you will see `macOS Input Monitoring permission is
+required`. Grant it in System Settings → Privacy & Security → Input Monitoring for
+the terminal (or app) you launch `open-razor` from, then run it again.
+
+## How it works
+
+A browser page cannot send USB feature reports, so the native side is a small
+Rust service and the UI is a page it serves:
+
+```
+src/hid.rs      IOKit HID manager, feature report exchange, TCC check
+src/report.rs   Razer report construction: header, checksum, effects, frames
+src/main.rs     HTTP server, JSON API, persisted state, startup restore
+web/            the console (HTML/CSS/JS, embedded into the binary)
+```
+
+Everything in `web/` is compiled into the binary with `include_str!` /
+`include_bytes!`, so the app ships as one file with no runtime assets.
+
+### The report format
+
+A 90-byte vendor feature report, addressed to report ID 0:
+
+```
+byte 0      status (0x00 new command, 0x02 successful)
+byte 1      transaction id (0xFF for this generation)
+bytes 2-3   remaining packets, big endian
+byte 4      protocol type
+byte 5      data size
+byte 6      command class
+byte 7      command id
+bytes 8-87  arguments
+byte 88     CRC — XOR of bytes 2..87
+byte 89     reserved
+```
+
+Effects are command class `0x03`, command `0x0A`, with `arguments[0]` selecting the
+effect (`0x00` off, `0x01` wave, `0x02` reactive, `0x03` breathing, `0x04` spectrum,
+`0x05` custom frame, `0x06` static). Custom frames are pushed row by row with class
+`0x03`, command `0x0B`: `[0xFF, row, start_col, stop_col, R, G, B, …]`.
+
+Driver mode is class `0x00`, command `0x04`, argument `0x03`. Chroma boards ignore
+effect writes until software takes LED ownership, so every apply begins with it.
+
+### The key map
+
+The 6 × 22 matrix positions were taken from OpenRGB's `BlackWidow Chroma TE` layout
+(`RazerDevices.cpp`, PID `0x0209`) and cross-checked key-for-key against Razer's own
+Chroma SDK enum `RzChromaSDKTypes.h`, where each `RZKEY` value is literally `0xRRCC`.
+Both agree on all 87 keys. Column 0 is unused on the TKL (it holds M1–M5 on
+full-size boards), and the spacebar is a single LED at `(5, 7)`.
+
+## Limits
+
+- The product ID is fixed at `0x0209` (`PRODUCT_ID` in `src/main.rs`). Other boards
+  need their PID — and possibly a different effect dialect; the extended-matrix
+  boards use a different command set.
+- Firmware macros and key remapping live on the keyboard and are programmed from
+  Windows Synapse. They are not reimplemented here.
+- Ripple and starlight are not in this board's firmware matrix effects.
+- Effects are host-driven: unplugging the keyboard clears them. Reopening the app
+  re-applies the saved state.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Protocol knowledge from
+[OpenRazer](https://github.com/openrazer/openrazer) (GPL-2.0) and
+[OpenRGB](https://github.com/CalcProgrammer1/OpenRGB) (GPL-2.0); this project is an
+independent implementation of the wire format, not a derivative of their code.
