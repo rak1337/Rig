@@ -305,12 +305,46 @@ fn main() {
             }
         });
     }
+    if args.iter().any(|a| a == "--probe") {
+        std::process::exit(match probe() {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("error: {err}");
+                1
+            }
+        });
+    }
+    if args.iter().any(|a| a == "--install-login") {
+        std::process::exit(match install_login() {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("error: {err}");
+                1
+            }
+        });
+    }
+    if args.iter().any(|a| a == "--uninstall-login") {
+        std::process::exit(match uninstall_login() {
+            Ok(()) => 0,
+            Err(err) => {
+                eprintln!("error: {err}");
+                1
+            }
+        });
+    }
+
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
             "open-razor — lighting console for Razer keyboards on macOS\n\n\
-             usage: open-razor [--port 7311] [--no-open] [--no-restore]\n\n\
-             Serves the console at http://127.0.0.1:7311 and controls the keyboard\n\
-             over IOKit HID. State and presets live in\n\
+             usage: open-razor [--port 7311] [--no-open] [--no-restore]\n\
+             \x20      open-razor --probe\n\
+             \x20      open-razor --install-login | --uninstall-login\n\
+             \x20      open-razor --test\n\n\
+             --probe            read firmware, device mode, brightness and the\n\
+             \x20                  indicator LEDs straight from the board\n\
+             --install-login    start at login and re-apply the saved look\n\
+             --no-restore       do not re-apply the saved state on launch\n\n\
+             Serves the console at http://127.0.0.1:7311. State and presets live in\n\
              ~/Library/Application Support/OpenRazor/state.json"
         );
         return;
@@ -454,4 +488,104 @@ fn smoke_test() -> Result<(), String> {
     println!("firmware {}.{:02}", response[8], response[9]);
     std::thread::sleep(Duration::from_millis(200));
     Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// diagnostics and login item
+// ---------------------------------------------------------------------------
+
+fn probe() -> Result<(), String> {
+    let keyboard = hid::Keyboard::open(PRODUCT_ID)?;
+
+    let firmware = keyboard.exchange(&report::firmware_version())?;
+    println!("firmware        {}.{:02}", firmware[8], firmware[9]);
+
+    let mode = keyboard.exchange(&report::get_device_mode())?;
+    let owner = match mode[8] {
+        0x03 => "software (an app owns the LEDs)",
+        0x00 => "firmware (the board runs its own effect)",
+        other => return Err(format!("unexpected device mode 0x{other:02x}")),
+    };
+    println!("device mode     0x{:02x} — {owner}", mode[8]);
+
+    let brightness = keyboard.exchange(&report::get_brightness())?;
+    println!(
+        "brightness      {}% (raw {})",
+        (brightness[10] as u32 * 100 + 127) / 255,
+        brightness[10]
+    );
+
+    let game = keyboard.exchange(&report::get_led_state(report::LED_GAME))?;
+    println!("gaming mode     {}", on_off(game[10]));
+
+    let macro_led = keyboard.exchange(&report::get_led_state(report::LED_MACRO))?;
+    println!("macro led       {}", on_off(macro_led[10]));
+
+    println!(
+        "\nThis board has no readable profile table: Synapse profiles are a Windows\n\
+         software concept, and the TE Chroma keeps no named on-board profiles.\n\
+         What it can hold is the single effect currently applied, and only while\n\
+         it has power."
+    );
+    Ok(())
+}
+
+fn on_off(value: u8) -> &'static str {
+    if value == 0 { "off" } else { "on" }
+}
+
+fn launch_agent_path() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    PathBuf::from(home)
+        .join("Library/LaunchAgents")
+        .join("dev.rakshak.open-razor.plist")
+}
+
+fn install_login() -> Result<(), String> {
+    let exe = std::env::current_exe().map_err(|err| format!("cannot find this binary: {err}"))?;
+    let path = launch_agent_path();
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)
+            .map_err(|err| format!("cannot create {}: {err}", dir.display()))?;
+    }
+    let plist = format!(
+        r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>dev.rakshak.open-razor</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{}</string>
+    <string>--no-open</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>StandardOutPath</key><string>/tmp/open-razor.log</string>
+  <key>StandardErrorPath</key><string>/tmp/open-razor.log</string>
+</dict>
+</plist>
+"#,
+        exe.display()
+    );
+    std::fs::write(&path, plist)
+        .map_err(|err| format!("cannot write {}: {err}", path.display()))?;
+    println!("installed {}", path.display());
+    println!("the console will start at login and re-apply the saved look");
+    println!("first run needs Input Monitoring for {}", exe.display());
+    Ok(())
+}
+
+fn uninstall_login() -> Result<(), String> {
+    let path = launch_agent_path();
+    match std::fs::remove_file(&path) {
+        Ok(()) => {
+            println!("removed {}", path.display());
+            Ok(())
+        }
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => {
+            println!("no login item installed");
+            Ok(())
+        }
+        Err(err) => Err(format!("cannot remove {}: {err}", path.display())),
+    }
 }

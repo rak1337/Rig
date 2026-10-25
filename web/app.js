@@ -154,7 +154,6 @@ let tool = "brush";
 let boards = [];
 let applyTimer = null;
 let flashes = new Map();
-let lastFrame = 0;
 
 /* ------------------------------------------------------------------ colors */
 
@@ -293,7 +292,7 @@ function commitPicker() {
   const [r, g, b] = hsv(picker.h, picker.s, picker.v);
   state.color = rgbToHex([r, g, b]);
   reflectColor();
-  render();
+  invalidate();
   apply();
 }
 
@@ -459,28 +458,26 @@ function keyColors(now) {
 }
 
 function render(now = 0) {
-  const colors = keyColors(now);
-
-  for (const entry of boards[0].keys) {
-    const value = colors.get(entry.code) || { color: CAP_BASE, intensity: 0 };
-    paintKey(entry, value.color, value.intensity);
+  if (currentView === "lighting") {
+    const colors = keyColors(now);
+    for (const entry of boards[0].keys) {
+      const value = colors.get(entry.code) || { color: CAP_BASE, intensity: 0 };
+      paintKey(entry, value.color, value.intensity);
+    }
+    const base = hexToRgb(state.color);
+    const spill = state.effect === "off" ? 0 : 0.12 + (state.brightness / 100) * 0.3;
+    boards[0].plate.style.fill = rgbToHex(mix([13, 16, 17], base, spill * 0.5));
+    dom.ambient.style.opacity =
+      String(state.effect === "off" ? 0.05 : 0.2 + (state.brightness / 100) * 0.5);
+  } else if (currentView === "studio") {
+    for (const entry of boards[1].keys) {
+      const hex = state.paint[entry.group.dataset.cell];
+      paintKey(entry, hex ? hexToRgb(hex) : CAP_BASE, hex ? 1 : 0);
+    }
+    const base = hexToRgb(state.color);
+    boards[1].plate.style.fill = rgbToHex(mix([13, 16, 17], base, 0.16));
+    dom.studioAmbient.style.opacity = String(0.2 + (state.brightness / 100) * 0.5);
   }
-
-  // Studio mirrors the paint layer, not the running effect.
-  for (const entry of boards[1].keys) {
-    const hex = state.paint[entry.group.dataset.cell];
-    paintKey(entry, hex ? hexToRgb(hex) : CAP_BASE, hex ? 1 : 0);
-  }
-
-  const base = hexToRgb(state.color);
-  const spill = state.effect === "off" ? 0 : 0.12 + (state.brightness / 100) * 0.3;
-  for (const board of boards) {
-    board.plate.style.fill = rgbToHex(mix([13, 16, 17], base, spill * 0.5));
-  }
-
-  const glow = state.effect === "off" ? 0.05 : 0.2 + (state.brightness / 100) * 0.5;
-  dom.ambient.style.opacity = String(glow);
-  dom.studioAmbient.style.opacity = String(glow);
 
   dom.readout.textContent = `${labelFor(state.effect)} · ${state.color.toUpperCase()}`;
   dom.studioDot.style.background = state.color;
@@ -491,12 +488,32 @@ function labelFor(id) {
   return (EFFECTS.find((effect) => effect.id === id) || EFFECTS[0]).name;
 }
 
-function loop(now) {
-  if (now - lastFrame > 33) {
+const ANIMATED = new Set(["spectrum", "wave", "breath", "reactive"]);
+let currentView = "lighting";
+let frameHandle = null;
+let dirty = true;
+
+function wantsMotion() {
+  return ANIMATED.has(state.effect)
+    && !reducedMotion.matches
+    && !document.hidden
+    && currentView === "lighting";
+}
+
+function tick(now) {
+  frameHandle = null;
+  if (dirty || wantsMotion()) {
     render(now);
-    lastFrame = now;
+    dirty = false;
   }
-  requestAnimationFrame(loop);
+  if (wantsMotion()) frameHandle = requestAnimationFrame(tick);
+}
+
+/// Ask for one paint on the next frame instead of painting synchronously in
+/// every input handler.
+function invalidate() {
+  dirty = true;
+  if (frameHandle === null) frameHandle = requestAnimationFrame(tick);
 }
 
 /* -------------------------------------------------------------------- http */
@@ -570,6 +587,8 @@ function showView(name) {
   for (const view of document.querySelectorAll(".view")) {
     view.hidden = view.dataset.view !== name;
   }
+  currentView = name;
+  invalidate();
 }
 
 /* ---------------------------------------------------------------- controls */
@@ -688,7 +707,7 @@ function bind() {
     if (!button) return;
     state.effect = button.dataset.effect;
     syncEffects();
-    render();
+    invalidate();
     apply();
   });
 
@@ -701,7 +720,7 @@ function bind() {
     buttons[next].focus();
     state.effect = buttons[next].dataset.effect;
     syncEffects();
-    render();
+    invalidate();
     apply();
   });
 
@@ -711,7 +730,7 @@ function bind() {
       if (!button) return;
       state[key] = key === "breath" ? button.dataset.breath : Number(button.dataset[key]);
       syncEffects();
-      render();
+      invalidate();
       apply();
     });
   }
@@ -735,7 +754,7 @@ function bind() {
   dom.color2.addEventListener("input", () => {
     state.color2 = dom.color2.value;
     syncColor();
-    render();
+    invalidate();
     apply();
   });
 
@@ -744,7 +763,7 @@ function bind() {
     if (/^[0-9a-f]{6}$/i.test(value)) {
       state.color = `#${value.toLowerCase()}`;
       syncColor();
-      render();
+      invalidate();
       apply({ immediate: true });
     } else {
       syncColor();
@@ -758,7 +777,7 @@ function bind() {
   dom.brightness.addEventListener("input", () => {
     state.brightness = Number(dom.brightness.value);
     syncBrightness();
-    render();
+    invalidate();
     apply();
   });
 
@@ -770,7 +789,7 @@ function bind() {
     element.addEventListener("click", () => {
       state[key] = !state[key];
       syncSwitches();
-      render();
+      invalidate();
       apply({ immediate: true });
     });
   }
@@ -778,13 +797,13 @@ function bind() {
   dom.studioApply.addEventListener("click", () => {
     state.effect = "paint";
     syncEffects();
-    render();
+    invalidate();
     apply({ immediate: true });
   });
 
   dom.studioClear.addEventListener("click", () => {
     state.paint = {};
-    render();
+    invalidate();
   });
 
   for (const button of document.querySelectorAll(".tool[data-tool]")) {
@@ -799,7 +818,7 @@ function bind() {
           const cell = entry.group.dataset.cell;
           if (cell) state.paint[cell] = state.color;
         }
-        render();
+        invalidate();
       }
     });
   }
@@ -811,7 +830,7 @@ function bind() {
     if (tool === "brush") state.paint[cell] = state.color;
     else if (tool === "eraser") delete state.paint[cell];
     else return;
-    render();
+    invalidate();
   });
 
   dom.presetList.addEventListener("click", (event) => {
@@ -828,7 +847,7 @@ function bind() {
     if (!preset) return;
     state = { ...state, ...preset.state, paint: { ...preset.state.paint } };
     syncAll();
-    render();
+    invalidate();
     showView("lighting");
     apply({ immediate: true });
   });
@@ -875,7 +894,7 @@ function buildPalette() {
     dot.addEventListener("click", () => {
       state.color = color;
       syncColor();
-      render();
+      invalidate();
       apply();
     });
     frag.append(dot);
@@ -892,7 +911,7 @@ async function boot() {
   bind();
   syncAll();
   renderPresets();
-  render();
+  invalidate();
 
   try {
     const data = await request("/api/state");
@@ -908,8 +927,9 @@ async function boot() {
     showAlert("The local service isn’t running. Start `open-razor` and reload this page.");
   }
 
-  render();
-  requestAnimationFrame(loop);
+  invalidate();
 }
+
+document.addEventListener("visibilitychange", () => invalidate());
 
 boot();

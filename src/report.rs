@@ -152,3 +152,21 @@ pub fn device_mode(mode: u8) -> [u8; REPORT_LEN] {
 pub fn firmware_version() -> [u8; REPORT_LEN] {
     build(CLASS_DEVICE, 0x81, 0x02, &[])
 }
+
+// --- reads: what the board currently has stored -------------------------
+
+pub const LED_GAME: u8 = GAME_LED;
+pub const LED_MACRO: u8 = MACRO_LED;
+
+/// Which side owns the LEDs: 0x00 firmware, 0x03 software.
+pub fn get_device_mode() -> [u8; REPORT_LEN] {
+    build(CLASS_DEVICE, 0x84, 0x02, &[])
+}
+
+pub fn get_led_state(led: u8) -> [u8; REPORT_LEN] {
+    build(CLASS_LED, 0x80, 0x03, &[VARSTORE, led])
+}
+
+pub fn get_brightness() -> [u8; REPORT_LEN] {
+    build(CLASS_LED, 0x83, 0x03, &[VARSTORE, LED_BACKLIGHT])
+}

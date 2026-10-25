@@ -37,10 +37,41 @@ It listens on `http://127.0.0.1:7311` and opens the console in your browser.
 
 ```sh
 open-razor [--port 7311] [--no-open] [--no-restore]
-open-razor --test          # round-trip a report to the keyboard and exit
+open-razor --probe               # read the board's current state and exit
+open-razor --install-login       # start at login, re-apply the saved look
+open-razor --uninstall-login
+open-razor --test                # round-trip a report to the keyboard and exit
 ```
 
 State and presets live in `~/Library/Application Support/OpenRazor/state.json`.
+
+## What the board actually holds
+
+```sh
+open-razor --probe
+```
+
+prints what the keyboard reports about itself: firmware, whether software or
+firmware currently owns the LEDs, the stored brightness, and the gaming/macro
+indicator states.
+
+There is no profile table to read. Razer's profiles are a Synapse-side (Windows)
+concept, and this board keeps no named on-board profiles. What it can hold is the
+single effect currently applied, and only while it has power — Chroma effects on
+this generation are host-driven, so the host sends every frame.
+
+That means "save the config to the keyboard" is not possible on a TE Chroma. The
+durable equivalent is to re-apply the look on each host:
+
+```sh
+open-razor --install-login    # LaunchAgent: start at login, restore the saved look
+open-razor --uninstall-login
+```
+
+The login item starts the service at login and re-applies
+`~/Library/Application Support/OpenRazor/state.json`, so macOS comes back to your
+look without you touching it. On Windows, Synapse does the same job. Whichever
+machine applies last wins while both are connected.
 
 ## Permission
 
