@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebHID probe — Rig</title>
+<style>
+  body { margin: 0; padding: 40px; background: #141414; color: #e6e6e6;
+         font: 14px/1.55 "SF Mono", ui-monospace, monospace; }
+  h1 { font-size: 15px; letter-spacing: .12em; text-transform: uppercase; color: #44d62c; }
+  button { font: inherit; padding: 8px 14px; border-radius: 4px; border: 1px solid #3a3a3a;
+           background: #1e1e1e; color: #e6e6e6; cursor: pointer; }
+  button:hover { background: #262626; }
+  pre { white-space: pre-wrap; background: #0e0e0e; border: 1px solid #2a2a2a;
+        border-radius: 4px; padding: 14px; margin-top: 18px; max-height: 60vh; overflow: auto; }
+  .k { color: #9c9c9c; }
+</style>
+</head>
+<body>
+<h1>WebHID probe</h1>
+<p class="k">
+  Answers one question: can a page in this browser reach the keyboard's vendor
+  interface and send a feature report? Nothing is written to the keyboard — this
+  only asks for its firmware version.
+</p>
+<button id="go">Pick the keyboard</button>
+<pre id="out">idle</pre>
+
+<script>
+const out = document.getElementById("out");
+const log = (line) => {
+  out.textContent += line + "\n";
+  fetch("/api/log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: "webhid: " + line.substring(0, 300) }),
+  }).catch(() => {});
+};
+
+function buildFirmwareRequest() {
+  const report = new Uint8Array(90);
+  report[0] = 0x00;      // status
+  report[1] = 0x1f;      // transaction
+  report[5] = 0x02;      // data size
+  report[6] = 0x00;      // class: device
+  report[7] = 0x81;      // command: firmware version
+  let crc = 0;
+  for (let i = 2; i < 88; i++) crc ^= report[i];
+  report[88] = crc;
+  return report;
+}
+
+document.getElementById("go").addEventListener("click", async () => {
+  out.textContent = "";
+  log(`navigator.hid present: ${Boolean(navigator.hid)}`);
+  if (!navigator.hid) {
+    log("This browser has no WebHID. Safari and Firefox never will.");
+    return;
+  }
+
+  try {
+    const filters = [{ vendorId: 0x1532 }];
+    log(`requestDevice filters: ${JSON.stringify(filters)}`);
+    const devices = await navigator.hid.requestDevice({ filters });
+    log(`devices offered by the picker: ${devices.length}`);
+    if (!devices.length) {
+      log("The chooser returned nothing — either nothing was picked, or the");
+      log("device is withheld from WebHID (keyboards usually are).");
+      return;
+    }
+
+    for (const device of devices) {
+      log("");
+      log(`device   ${device.productName}`);
+      log(`ids      ${device.vendorId.toString(16)}:${device.productId.toString(16)}`);
+      log(`collections ${device.collections.length}`);
+      for (const collection of device.collections) {
+        log(`  usage page ${collection.usagePage} / usage ${collection.usage}`);
+      }
+
+      try {
+        await device.open();
+        log(`open     ok, ${device.opened}`);
+      } catch (err) {
+        log(`open     FAILED: ${err.message}`);
+        continue;
+      }
+
+      const request = buildFirmwareRequest();
+      try {
+        await device.sendFeatureReport(0, request);
+        log("SET_REPORT feature ok");
+      } catch (err) {
+        log(`SET_REPORT FAILED: ${err.message}`);
+      }
+      try {
+        const response = await device.receiveFeatureReport(0);
+        const bytes = new Uint8Array(response.buffer ?? response);
+        log(`GET_REPORT ${bytes.length} bytes, status 0x${bytes[0].toString(16)}`);
+        log(`firmware ${bytes[8]}.${String(bytes[9]).padStart(2, "0")}`);
+      } catch (err) {
+        log(`GET_REPORT FAILED: ${err.message}`);
+      }
+      await device.close();
+    }
+  } catch (err) {
+    log(`picker FAILED: ${err.message}`);
+  }
+  log("");
+  log("done");
+});
+</script>
+</body>
+</html>

@@ -17,6 +17,7 @@ use tiny_http::{Header, Method, Response, Server, StatusCode};
 const INDEX_HTML: &str = include_str!("../web/index.html");
 const APP_CSS: &str = include_str!("../web/app.css");
 const APP_JS: &str = include_str!("../web/app.js");
+const WEBHID_HTML: &str = include_str!("../web/webhid.html");
 const FONT_ARCHIVO: &[u8] = include_bytes!("../web/fonts/Archivo.ttf");
 const FONT_MONO: &[u8] = include_bytes!("../web/fonts/IBMPlexMono.ttf");
 
@@ -846,6 +847,9 @@ fn main() {
                     }
                 }
                 respond_json(request, &serde_json::json!({"ok": true}), 200);
+            }
+            (Method::Get, "/webhid") => {
+                respond_bytes(request, WEBHID_HTML.as_bytes().to_vec(), "text/html; charset=utf-8")
             }
             (Method::Get, "/api/log") => {
                 let logs = app.logs.lock().unwrap().clone();
