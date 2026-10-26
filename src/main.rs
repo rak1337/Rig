@@ -1,3 +1,4 @@
+mod devices;
 mod frontmost;
 mod hid;
 mod keys;
@@ -19,7 +20,7 @@ const FONT_ARCHIVO: &[u8] = include_bytes!("../web/fonts/Archivo.ttf");
 const FONT_MONO: &[u8] = include_bytes!("../web/fonts/IBMPlexMono.ttf");
 
 const DEFAULT_PORT: u16 = 7311;
-const PRODUCT_ID: u16 = 0x0209;
+const PRODUCT_ID: u16 = devices::DEFAULT_PID;
 
 // ---------------------------------------------------------------------------
 // state
@@ -131,10 +132,11 @@ struct App {
     renderer: Mutex<render::Settings>,
     frame: Mutex<Vec<(u8, u8, u8)>>,
     engine: keys::Engine,
+    pid: u16,
 }
 
 impl App {
-    fn load() -> App {
+    fn load(pid: u16) -> App {
         let stored = std::fs::read_to_string(store_path())
             .ok()
             .and_then(|raw| serde_json::from_str::<Stored>(&raw).ok())
@@ -155,6 +157,7 @@ impl App {
             renderer: Mutex::new(render::Settings::default()),
             frame: Mutex::new(Vec::new()),
             engine: keys::Engine::new(),
+            pid,
         }
     }
 
@@ -187,7 +190,7 @@ impl App {
     fn apply(&self, state: &LightState) -> Result<String, String> {
         let mut guard = self.keyboard.lock().unwrap();
         if guard.is_none() {
-            *guard = Some(hid::Keyboard::open(PRODUCT_ID)?);
+            *guard = Some(hid::Keyboard::open(self.pid)?);
         }
         {
             let mut renderer = self.renderer.lock().unwrap();
@@ -312,7 +315,7 @@ impl App {
         if guard.is_some() {
             return None;
         }
-        match hid::Keyboard::open(PRODUCT_ID) {
+        match hid::Keyboard::open(self.pid) {
             Ok(keyboard) => {
                 *guard = Some(keyboard);
                 None
@@ -325,6 +328,7 @@ impl App {
         let stored = self.stored.lock().unwrap();
         Payload {
             revision: stored.revision,
+            device: devices::info(self.pid),
             connected: self.keyboard.lock().unwrap().is_some(),
             firmware: self.firmware.lock().unwrap().clone(),
             error,
@@ -410,6 +414,7 @@ fn store_path() -> PathBuf {
 #[derive(Serialize)]
 struct Payload {
     revision: u64,
+    device: devices::DeviceInfo,
     connected: bool,
     firmware: Option<String>,
     error: Option<String>,
@@ -551,7 +556,10 @@ fn main() {
     let open_browser = !args.iter().any(|a| a == "--no-open");
     let restore = !args.iter().any(|a| a == "--no-restore");
 
-    let app = Arc::new(App::load());
+    let pid = flag_value(&args, "--pid")
+        .and_then(|value| u16::from_str_radix(value.trim_start_matches("0x"), 16).ok())
+        .unwrap_or(PRODUCT_ID);
+    let app = Arc::new(App::load(pid));
     app.sync_remaps();
     app.sync_triggers();
     app.engine.start();
@@ -1086,7 +1094,7 @@ fn spawn_renderer(app: Arc<App>) {
             }
 
             if guard.is_none() && std::time::Instant::now() >= next_open {
-                *guard = hid::Keyboard::open(PRODUCT_ID).ok();
+                *guard = hid::Keyboard::open(app.pid).ok();
                 if guard.is_none() {
                     // Do not hammer a refused permission; keep previewing.
                     next_open = std::time::Instant::now() + Duration::from_secs(5);

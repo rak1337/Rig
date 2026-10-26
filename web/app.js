@@ -245,6 +245,7 @@ let frameColors = [];
 let keysTimer = null;
 let keysData = { trusted: false, recording: false, steps: 0, remaps: [], macros: [] };
 let profilesData = { active: null, frontmost: null, profiles: [] };
+let device = { layout: "tkl", per_key: true, logo: true };
 let lastRevision = 0;
 let lastApplyAt = 0;
 let capture = null;
@@ -395,25 +396,23 @@ function commitPicker() {
 
 /* ---------------------------------------------------------------- keyboard */
 
-function buildBoard(svg) {
+const LOGO_BAND = 64;
+const LAYOUTS = { tkl: ROWS, generic: ROWS };
+
+function buildBoard(svg, device) {
   const ns = "http://www.w3.org/2000/svg";
   const frag = document.createDocumentFragment();
   const keys = [];
-
-  const defs = document.createElementNS(ns, "defs");
-  defs.innerHTML = `<linearGradient id="capGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#31363a"/>
-      <stop offset="0.55" stop-color="#24292c"/>
-      <stop offset="1" stop-color="#181c1e"/>
-    </linearGradient>`;
-  frag.append(defs);
+  const rows = LAYOUTS[device?.layout] || LAYOUTS.generic;
+  const perKey = device?.per_key !== false;
+  const band = device?.logo === false ? 0 : LOGO_BAND;
 
   const plate = document.createElementNS(ns, "rect");
   plate.setAttribute("class", "plate");
   plate.setAttribute("x", -14);
   plate.setAttribute("y", -14);
   plate.setAttribute("width", 18.5 * STEP - GAP + 28);
-  plate.setAttribute("height", 5 * STEP + U + 28);
+  plate.setAttribute("height", 5 * STEP + U + 28 + band);
   plate.setAttribute("rx", 14);
   frag.append(plate);
 
@@ -421,7 +420,7 @@ function buildBoard(svg) {
     const group = document.createElementNS(ns, "g");
     group.setAttribute("class", "key");
     group.dataset.code = code;
-    const cell = KEY_CELLS[code];
+    const cell = perKey ? KEY_CELLS[code] : null;
     if (cell) group.dataset.cell = cell.join(",");
 
     const shadow = document.createElementNS(ns, "rect");
@@ -432,6 +431,15 @@ function buildBoard(svg) {
     shadow.setAttribute("height", U);
     shadow.setAttribute("rx", 7);
 
+    const under = document.createElementNS(ns, "rect");
+    under.setAttribute("class", "under");
+    under.setAttribute("x", x + 1.5);
+    under.setAttribute("y", y + U - 7);
+    under.setAttribute("width", width - 3);
+    under.setAttribute("height", 5);
+    under.setAttribute("rx", 2.5);
+    under.style.opacity = "0";
+
     const cap = document.createElementNS(ns, "rect");
     cap.setAttribute("class", "cap");
     cap.setAttribute("x", x);
@@ -441,16 +449,17 @@ function buildBoard(svg) {
     cap.setAttribute("rx", 7);
     cap.setAttribute("fill", "url(#capGrad)");
 
-    const under = document.createElementNS(ns, "rect");
-    under.setAttribute("class", "under");
-    under.setAttribute("x", x + 2);
-    under.setAttribute("y", y + U - 5);
-    under.setAttribute("width", width - 4);
-    under.setAttribute("height", 3);
-    under.setAttribute("rx", 1.5);
-    under.style.opacity = "0";
+    // Light escaping around the cap: the tell of a backlit key.
+    const edge = document.createElementNS(ns, "rect");
+    edge.setAttribute("class", "edge");
+    edge.setAttribute("x", x + 0.6);
+    edge.setAttribute("y", y + 0.6);
+    edge.setAttribute("width", width - 1.2);
+    edge.setAttribute("height", U - 1.2);
+    edge.setAttribute("rx", 6.5);
+    edge.style.opacity = "0";
 
-    group.append(shadow, cap, under);
+    group.append(shadow, under, cap, edge);
 
     if (label) {
       const text = document.createElementNS(ns, "text");
@@ -459,13 +468,15 @@ function buildBoard(svg) {
       text.setAttribute("y", y + U / 2 + 0.5);
       text.textContent = label;
       group.append(text);
+      keys.push({ code, cap, under, edge, legend: text, group, x, width });
+    } else {
+      keys.push({ code, cap, under, edge, legend: null, group, x, width });
     }
 
     frag.append(group);
-    keys.push({ code, cap, under, group, x, width });
   };
 
-  ROWS.forEach((row, index) => {
+  rows.forEach((row, index) => {
     let cursor = 0;
     for (const item of row.keys) {
       if (item.gap) {
@@ -479,16 +490,50 @@ function buildBoard(svg) {
 
   for (const nav of NAV) draw(nav.code, nav.label, nav.c * STEP, nav.r * STEP, U);
 
+  if (band) {
+    const logo = document.createElementNS(ns, "g");
+    logo.setAttribute("class", "logo");
+
+    const wordmark = document.createElementNS(ns, "text");
+    wordmark.setAttribute("x", (18.5 * STEP - GAP) / 2);
+    wordmark.setAttribute("y", 5 * STEP + U + 34);
+    wordmark.textContent = "RAZER";
+    logo.append(wordmark);
+
+    const glow = document.createElementNS(ns, "rect");
+    glow.setAttribute("class", "logo-glow");
+    glow.setAttribute("x", (18.5 * STEP - GAP) / 2 - 70);
+    glow.setAttribute("y", 5 * STEP + U + 14);
+    glow.setAttribute("width", 140);
+    glow.setAttribute("height", 26);
+    glow.setAttribute("rx", 13);
+    logo.append(glow); /* behind the text once painted */
+
+    logo.insertBefore(glow, wordmark);
+    frag.append(logo);
+  }
+
   svg.replaceChildren(frag);
-  svg.setAttribute("viewBox", `0 0 ${18.5 * STEP - GAP + 4} ${5 * STEP + U + 12}`);
+  svg.setAttribute(
+    "viewBox",
+    `0 0 ${18.5 * STEP - GAP + 4} ${5 * STEP + U + 12 + band}`,
+  );
   return { keys, plate };
 }
 
 /// Lighting preview: the caps stay black, the light shows as a strip bleeding
 /// out from under each cap plus the legends.
 function paintKey(entry, color, intensity) {
-  entry.under.style.fill = rgbToHex(color);
-  entry.under.style.opacity = String(0.92 * intensity);
+  const hex = rgbToHex(color);
+  entry.under.style.fill = hex;
+  entry.under.style.opacity = String(0.95 * intensity);
+  entry.edge.style.stroke = hex;
+  entry.edge.style.opacity = String(0.55 * intensity);
+  if (entry.legend) {
+    entry.legend.style.fill = intensity > 0.06
+      ? rgbToHex(mix([255, 255, 255], color, 0.55))
+      : "";
+  }
   entry.group.classList.toggle("lit", intensity > 0.5);
 }
 
@@ -497,6 +542,11 @@ function paintKeyEditing(entry, color, painted) {
   entry.cap.style.fill = painted ? rgbToHex(mix(CAP_BASE, color, 0.72)) : "url(#capGrad)";
   entry.under.style.fill = rgbToHex(color);
   entry.under.style.opacity = painted ? "0.9" : "0";
+  entry.edge.style.stroke = rgbToHex(color);
+  entry.edge.style.opacity = painted ? "0.8" : "0";
+  if (entry.legend) {
+    entry.legend.style.fill = painted ? rgbToHex(mix([255, 255, 255], color, 0.5)) : "";
+  }
   entry.group.classList.toggle("lit", painted);
 }
 
@@ -1410,26 +1460,30 @@ function renderProfiles() {
 async function boot() {
   buildEffects();
   buildPalette();
-  boards = [buildBoard(dom.keyboard), buildBoard(dom.studioKeyboard)];
   bind();
-  syncAll();
-  renderPresets();
-  fetchProfiles();
-  invalidate();
 
+  let data = null;
   try {
-    const data = await request("/api/state");
-    if (data.state) state = { ...state, ...data.state };
-    presets = data.presets || [];
-    firmware = data.firmware;
-    syncAll();
-    setStatus(data.connected, data.firmware, data.error);
-    if (data.error) showAlert(data.error);
-    renderPresets();
+    data = await request("/api/state");
   } catch {
     setStatus(false);
     showAlert("The local service isn’t running. Start `rig` and reload this page.");
   }
+
+  // The layout follows the keyboard we actually found; unknown boards fall back
+  // to a generic drawing rather than pretending to be this one.
+  device = data?.device ?? { layout: "tkl", per_key: true, logo: true };
+  boards = [buildBoard(dom.keyboard, device), buildBoard(dom.studioKeyboard, device)];
+
+  if (data?.state) state = { ...state, ...data.state };
+  presets = data?.presets || [];
+  firmware = data?.firmware ?? null;
+
+  syncAll();
+  renderPresets();
+  fetchProfiles();
+  setStatus(data?.connected ?? false, data?.firmware, data?.error ?? null);
+  if (data?.error) showAlert(data.error);
 
   invalidate();
 }

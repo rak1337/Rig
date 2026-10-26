@@ -92,6 +92,18 @@ Keys → Hypershift, fill layer 2, and holding that key swaps the remap table wh
 it is down. The tap tracks the key's press state itself, so it works with any key
 you pick.
 
+## Layouts and devices
+
+The service reports which keyboard it found (`src/devices.rs`), including a layout
+id, matrix size and whether per-key painting is possible. The console draws the
+layout it is told to draw; unknown boards get a generic ANSI TKL rather than a
+wrong specific one, with painting disabled. `--pid 0x0203` points the app at
+another board in the table.
+
+Keycaps render as backlit caps: dark plastic, legends that light up, a rim of
+light escaping each cap edge, and a backlight pool under the cap. Matching the
+Razer look is why the logo plate sits on the front edge.
+
 ## What the board actually holds
 
 ```sh

@@ -274,6 +274,29 @@ button { font-family: inherit; }
   transition: opacity 150ms var(--ease-out);
 }
 
+.key .edge {
+  fill: none;
+  stroke-width: 1.2;
+  transition: opacity 150ms var(--ease-out), stroke 150ms var(--ease-out);
+}
+
+.logo text {
+  font-family: "Archivo", system-ui, sans-serif;
+  font-weight: 700;
+  font-variation-settings: "wdth" 66;
+  font-size: 15px;
+  letter-spacing: 0.44em;
+  text-anchor: middle;
+  fill: var(--light);
+  opacity: 0.9;
+}
+
+.logo-glow {
+  fill: var(--light);
+  opacity: 0.14;
+  filter: blur(9px);
+}
+
 .key .legend {
   fill: rgba(232, 232, 232, 0.42);
   font-family: "Archivo", system-ui, sans-serif;
