@@ -94,6 +94,7 @@ const EFFECTS = [
   { id: "gradient", name: "Gradient", note: "two colors drifting" },
   { id: "marquee", name: "Marquee", note: "a band sweeping across" },
   { id: "comet", name: "Comet", note: "a head with a long tail" },
+  { id: "type", name: "Typing", note: "ripples out from each keypress" },
   { id: "paint", name: "Custom frame", note: "your own colors, key by key" },
   { id: "off", name: "Off", note: "backlight dark" },
 ];
@@ -144,7 +145,9 @@ function keyLabel(keycode) {
 }
 
 const CAP_BASE = [27, 31, 33];
-const SOFTWARE = new Set(["fire", "starlight", "ripple", "gradient", "marquee", "comet"]);
+const SOFTWARE = new Set([
+  "fire", "starlight", "ripple", "gradient", "marquee", "comet", "type",
+]);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const dom = {
@@ -222,6 +225,7 @@ let keysTimer = null;
 let keysData = { trusted: false, recording: false, steps: 0, remaps: [], macros: [] };
 let capture = null;
 let pendingFrom = null;
+let bindingMacro = null;
 
 /* ------------------------------------------------------------------ colors */
 
@@ -969,6 +973,19 @@ function bind() {
       dom.remapHint.textContent = "That key has no mapping yet — try another.";
       return;
     }
+    if (capture === "bind") {
+      request("/api/keys/macro/bind", {
+        method: "POST",
+        body: JSON.stringify({ id: bindingMacro, key: keycode }),
+      }).then((data) => {
+        keysData = data;
+        renderKeys();
+        cancelCapture();
+        dom.recordStatus.hidden = true;
+      });
+      return;
+    }
+
     if (capture === "from") {
       pendingFrom = keycode;
       capture = "to";
@@ -1020,8 +1037,16 @@ function bind() {
   });
 
   dom.macros.addEventListener("click", (event) => {
+    const bind = event.target.closest("[data-bind]");
     const play = event.target.closest("[data-play]");
     const remove = event.target.closest("[data-delete]");
+    if (bind) {
+      capture = "bind";
+      bindingMacro = Number(bind.dataset.bind);
+      dom.recordStatus.hidden = false;
+      dom.recordStatus.textContent = "Press the key that should run this macro…";
+      return;
+    }
     if (play) {
       request("/api/keys/macro/play", {
         method: "POST",
@@ -1115,6 +1140,7 @@ function buildPalette() {
 function cancelCapture() {
   capture = null;
   pendingFrom = null;
+  bindingMacro = null;
   dom.remapAdd.textContent = "Add a remap";
   dom.remapHint.textContent =
     "Press the key you want to change, then press what it should act as.";
@@ -1169,12 +1195,15 @@ function renderKeys() {
   for (const macro of keysData.macros) {
     const row = document.createElement("div");
     row.className = "row-item";
+    const bound = macro.trigger == null ? "" : `<span class="keycap">${keyLabel(macro.trigger)}</span>`;
     row.innerHTML = `
       <span class="row-main">
         <span class="row-name">${escapeHtml(macro.name)}</span>
         <span class="row-meta">${macro.steps.length} events</span>
+        ${bound}
       </span>
       <span class="row-main">
+        <button class="ghost" data-bind="${macro.id}">${macro.trigger == null ? "Bind" : "Rebind"}</button>
         <button class="ghost" data-play="${macro.id}">Play</button>
         <button class="icon-button" data-delete="${macro.id}" aria-label="Delete macro">×</button>
       </span>`;

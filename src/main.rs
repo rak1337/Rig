@@ -187,6 +187,19 @@ impl App {
         }
     }
 
+    fn sync_triggers(&self) {
+        let triggers: Vec<(u16, Vec<keys::Step>)> = {
+            let stored = self.stored.lock().unwrap();
+            stored
+                .keys
+                .macros
+                .iter()
+                .filter_map(|item| item.trigger.map(|key| (key, item.steps.clone())))
+                .collect()
+        };
+        self.engine.set_triggers(&triggers);
+    }
+
     fn sync_remaps(&self) {
         let remaps = self.stored.lock().unwrap().keys.remaps.clone();
         self.engine.set_remaps(&remaps);
@@ -445,6 +458,7 @@ fn main() {
 
     let app = Arc::new(App::load());
     app.sync_remaps();
+    app.sync_triggers();
     app.engine.start();
     spawn_renderer(Arc::clone(&app));
 
@@ -615,6 +629,7 @@ fn main() {
                         stored.keys.next_macro = id + 1;
                         stored.keys.macros.push(keys::Macro {
                             id,
+                            trigger: None,
                             name: if req.name.trim().is_empty() {
                                 format!("Macro {id}")
                             } else {
@@ -628,6 +643,34 @@ fn main() {
                     respond_json(request, &serde_json::json!({"error": "nothing was recorded"}), 200);
                     continue;
                 }
+                app.sync_triggers();
+                app.save();
+                let payload = app.keys_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/keys/macro/bind") => {
+                #[derive(Deserialize)]
+                struct BindRequest {
+                    id: u64,
+                    key: u16,
+                }
+                let Some(req) = read_json::<BindRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    // one key, one macro
+                    for item in stored.keys.macros.iter_mut() {
+                        if item.trigger == Some(req.key) {
+                            item.trigger = None;
+                        }
+                    }
+                    if let Some(item) = stored.keys.macros.iter_mut().find(|item| item.id == req.id) {
+                        item.trigger = Some(req.key);
+                    }
+                }
+                app.sync_triggers();
                 app.save();
                 let payload = app.keys_payload();
                 respond_json(request, &payload, 200);
@@ -664,6 +707,7 @@ fn main() {
                     let mut stored = app.stored.lock().unwrap();
                     stored.keys.macros.retain(|item| item.id != req.id);
                 }
+                app.sync_triggers();
                 app.save();
                 let payload = app.keys_payload();
                 respond_json(request, &payload, 200);
@@ -812,7 +856,13 @@ fn spawn_renderer(app: Arc<App>) {
                 continue;
             }
 
-            let frame = render::frame(&settings, started.elapsed().as_secs_f32());
+            let presses: Vec<(usize, f32)> = app
+                .engine
+                .drain_presses()
+                .into_iter()
+                .filter_map(|(key, age)| keys::cell_for_keycode(key).map(|cell| (cell, age)))
+                .collect();
+            let frame = render::frame(&settings, started.elapsed().as_secs_f32(), &presses);
             {
                 let mut stored = app.frame.lock().unwrap();
                 stored.clear();

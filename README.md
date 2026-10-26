@@ -62,6 +62,24 @@ The **Keys** tab remaps keys and records macros system-wide through a
 Both need **Accessibility** permission (System Settings → Privacy & Security →
 Accessibility). Without it the tap is never created and the tab says so.
 
+## Compared with Razer Synapse
+
+| Capability | Here | Notes |
+| --- | --- | --- |
+| Device effects (wave, spectrum, breathing, reactive, static, off) | yes | runs in the keyboard's firmware |
+| Fire, starlight, ripple, gradient, marquee, comet, typing | yes | rendered here, ~40 fps |
+| Per-key painting | yes | real 6 × 22 key map |
+| Brightness, gaming mode, macro LED, driver mode | yes | |
+| Key remapping | yes | system-wide event tap |
+| Macros with trigger keys | yes | record, play, bind to a key |
+| Presets | yes | local, restored at launch |
+| Per-app profiles | not yet | feasible: watch the frontmost app |
+| Hypershift / Fn layer | not yet | feasible: second remap layer on a modifier |
+| Audio visualiser | not yet | needs audio capture plus an FFT |
+| Chroma Connect / game integrations | no | Razer's Windows SDK |
+| On-board profiles | no | this board has no profile storage |
+| Polling rate | no | fixed in firmware |
+
 ## What the board actually holds
 
 ```sh

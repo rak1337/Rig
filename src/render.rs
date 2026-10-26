@@ -38,7 +38,7 @@ impl Default for Settings {
 pub fn is_software(effect: &str) -> bool {
     matches!(
         effect,
-        "fire" | "starlight" | "ripple" | "gradient" | "marquee" | "comet"
+        "fire" | "starlight" | "ripple" | "gradient" | "marquee" | "comet" | "type"
     )
 }
 
@@ -76,7 +76,7 @@ fn mul(color: (f32, f32, f32), k: f32) -> (f32, f32, f32) {
 }
 
 /// One frame for the given time, in seconds.
-pub fn frame(settings: &Settings, time: f32) -> Vec<(u8, u8, u8)> {
+pub fn frame(settings: &Settings, time: f32, presses: &[(usize, f32)]) -> Vec<(u8, u8, u8)> {
     let c1 = rgb(settings.c1);
     let c2 = rgb(settings.c2);
     let speed = settings.speed.max(0.5);
@@ -151,6 +151,22 @@ pub fn frame(settings: &Settings, time: f32) -> Vec<(u8, u8, u8)> {
                     };
                     let core = if (x - head).abs() < 0.06 { 1.0 } else { 0.0 };
                     mix(mul(c1, 0.03), c1, trail.max(core))
+                }
+
+                // Rings that start where a key was actually pressed.
+                "type" => {
+                    let mut intensity: f32 = 0.05;
+                    for (cell, age) in presses {
+                        let (press_row, press_col) = (cell / COLS, cell % COLS);
+                        let dx = col as f32 - press_col as f32;
+                        let dy = (row as f32 - press_row as f32) * 1.6;
+                        let distance = (dx * dx + dy * dy).sqrt();
+                        let radius = age * 9.0;
+                        let ring = (-((distance - radius).abs()) * 1.1).exp();
+                        let fade = (1.0 - age / 0.9).max(0.0);
+                        intensity = intensity.max(ring * fade);
+                    }
+                    mul(c1, intensity)
                 }
 
                 _ => (0.0, 0.0, 0.0),
