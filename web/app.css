@@ -279,10 +279,7 @@ button { font-family: inherit; }
   stroke-width: 0.8;
 }
 
-.key .under {
-  fill: var(--light);
-  transition: opacity 150ms var(--ease-out);
-}
+.key .tint { transition: opacity 150ms var(--ease-out); }
 
 .key .edge {
   fill: none;

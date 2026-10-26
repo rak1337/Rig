@@ -463,15 +463,6 @@ function buildBoard(svg, device) {
     well.setAttribute("height", U);
     well.setAttribute("rx", 6);
 
-    const under = document.createElementNS(ns, "rect");
-    under.setAttribute("class", "under");
-    under.setAttribute("x", x + 2.4);
-    under.setAttribute("y", y + U - 6.2);
-    under.setAttribute("width", w - 4.8);
-    under.setAttribute("height", 4.2);
-    under.setAttribute("rx", 2);
-    under.style.opacity = "0";
-
     const cap = document.createElementNS(ns, "rect");
     cap.setAttribute("class", "cap");
     cap.setAttribute("x", x + 1);
@@ -480,6 +471,16 @@ function buildBoard(svg, device) {
     cap.setAttribute("height", U - 2);
     cap.setAttribute("rx", 5);
     cap.setAttribute("fill", "url(#capGrad)");
+
+    // Light passing through the cap itself.
+    const tint = document.createElementNS(ns, "rect");
+    tint.setAttribute("class", "tint");
+    tint.setAttribute("x", x + 1);
+    tint.setAttribute("y", y + 1);
+    tint.setAttribute("width", w - 2);
+    tint.setAttribute("height", U - 2);
+    tint.setAttribute("rx", 5);
+    tint.style.opacity = "0";
 
     const edge = document.createElementNS(ns, "rect");
     edge.setAttribute("class", "edge");
@@ -490,7 +491,7 @@ function buildBoard(svg, device) {
     edge.setAttribute("rx", 4.4);
     edge.style.opacity = "0";
 
-    group.append(well, cap, under, edge);
+    group.append(well, cap, tint, edge);
 
     // Razer legends sit top-left on the cap.
     if (label) {
@@ -500,9 +501,9 @@ function buildBoard(svg, device) {
       main.setAttribute("y", y + 13);
       main.textContent = label;
       group.append(main);
-      keys.push({ code, cap, under, edge, legend: main, group, x, width: w });
+      keys.push({ code, cap, tint, edge, legend: main, group, x, width: w });
     } else {
-      keys.push({ code, cap, under, edge, legend: null, group, x, width: w });
+      keys.push({ code, cap, tint, edge, legend: null, group, x, width: w });
     }
 
     if (shift) {
@@ -555,14 +556,14 @@ function buildBoard(svg, device) {
   return { keys, plate: deck };
 }
 
-/// Lighting preview: the caps stay black, the light shows as a strip bleeding
-/// out from under each cap plus the legends.
+/// Lighting preview: the caps are translucent, so the key's colour shows through
+/// the cap and lights its legend. No separate light bar.
 function paintKey(entry, color, intensity) {
   const hex = rgbToHex(color);
-  entry.under.style.fill = hex;
-  entry.under.style.opacity = String(0.95 * intensity);
+  entry.tint.style.fill = hex;
+  entry.tint.style.opacity = String(0.06 + 0.34 * intensity);
   entry.edge.style.stroke = hex;
-  entry.edge.style.opacity = String(0.55 * intensity);
+  entry.edge.style.opacity = String(0.5 * intensity);
   if (entry.legend) {
     entry.legend.style.fill = intensity > 0.06
       ? rgbToHex(mix([255, 255, 255], color, 0.55))
@@ -573,10 +574,10 @@ function paintKey(entry, color, intensity) {
 
 /// Studio: this surface is for editing, so painted keys show their colour.
 function paintKeyEditing(entry, color, painted) {
-  entry.cap.style.fill = painted ? rgbToHex(mix(CAP_BASE, color, 0.72)) : "url(#capGrad)";
-  entry.under.style.fill = rgbToHex(color);
-  entry.under.style.opacity = painted ? "0.9" : "0";
-  entry.edge.style.stroke = rgbToHex(color);
+  const hex = rgbToHex(color);
+  entry.tint.style.fill = hex;
+  entry.tint.style.opacity = painted ? "0.78" : "0";
+  entry.edge.style.stroke = hex;
   entry.edge.style.opacity = painted ? "0.8" : "0";
   if (entry.legend) {
     entry.legend.style.fill = painted ? rgbToHex(mix([255, 255, 255], color, 0.5)) : "";
@@ -736,7 +737,7 @@ function syncPolling() {
     && state.effect !== "off" && state.effect !== "paint";
   if (wanted && frameTimer === null) {
     fetchFrame();
-    frameTimer = setInterval(fetchFrame, 80);
+    frameTimer = setInterval(fetchFrame, 35);
   } else if (!wanted && frameTimer !== null) {
     clearInterval(frameTimer);
     frameTimer = null;
