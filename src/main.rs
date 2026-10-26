@@ -39,6 +39,18 @@ struct LightState {
     driver: bool,
     game_mode: bool,
     macro_mode: bool,
+    #[serde(default = "one")]
+    gamma: f32,
+    #[serde(default = "one")]
+    gain_r: f32,
+    #[serde(default = "one")]
+    gain_g: f32,
+    #[serde(default = "one")]
+    gain_b: f32,
+}
+
+fn one() -> f32 {
+    1.0
 }
 
 impl Default for LightState {
@@ -55,6 +67,10 @@ impl Default for LightState {
             driver: true,
             game_mode: false,
             macro_mode: false,
+            gamma: 1.0,
+            gain_r: 1.0,
+            gain_g: 1.0,
+            gain_b: 1.0,
         }
     }
 }
@@ -182,6 +198,10 @@ impl App {
                 renderer.c2 = parse_color(&state.color2).unwrap_or((10, 132, 255));
                 renderer.speed = state.speed.max(1) as f32;
                 renderer.brightness = 1.0;
+                renderer.direction = state.direction;
+                renderer.breath = state.breath.clone();
+                renderer.gamma = state.gamma;
+                renderer.gain = (state.gain_r, state.gain_g, state.gain_b);
             } else {
                 renderer.active = false;
             }
@@ -328,31 +348,12 @@ fn push_state(keyboard: &hid::Keyboard, state: &LightState) -> Result<String, St
         "macro led",
     )?;
 
-    let (r, g, b) = parse_color(&state.color).unwrap_or((255, 255, 255));
     match state.effect.as_str() {
-        "static" => check(keyboard.exchange(&report::static_effect(r, g, b))?, "static")?,
-        "wave" => check(
-            keyboard.exchange(&report::wave(state.direction))?,
-            "wave",
-        )?,
-        "spectrum" => check(keyboard.exchange(&report::spectrum())?, "spectrum")?,
-        "breath" => {
-            let packet = match state.breath.as_str() {
-                "dual" => {
-                    let (r2, g2, b2) = parse_color(&state.color2).unwrap_or((10, 132, 255));
-                    report::breath_dual((r, g, b), (r2, g2, b2))
-                }
-                "random" => report::breath_random(),
-                _ => report::breath_single(r, g, b),
-            };
-            check(keyboard.exchange(&packet)?, "breathing")?;
-        }
-        "reactive" => check(
-            keyboard.exchange(&report::reactive(state.speed, r, g, b))?,
-            "reactive",
-        )?,
+        // The two effects the board itself still owns.
         "off" => check(keyboard.exchange(&report::off())?, "off")?,
         "paint" => push_paint(keyboard, state)?,
+        // Everything else is drawn by the render thread; sending a firmware
+        // effect here would fight it.
         effect if render::is_software(effect) => {}
         other => return Err(format!("unknown effect {other:?}")),
     }
@@ -478,7 +479,7 @@ fn respond_json(request: tiny_http::Request, body: &impl Serialize, status: u16)
 fn respond_bytes(request: tiny_http::Request, bytes: Vec<u8>, content_type: &'static str) {
     let response = Response::from_data(bytes)
         .with_header(Header::from_bytes(&b"Content-Type"[..], content_type.as_bytes()).unwrap())
-        .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"max-age=3600"[..]).unwrap());
+        .with_header(Header::from_bytes(&b"Cache-Control"[..], &b"no-store"[..]).unwrap());
     let _ = request.respond(response);
 }
 
@@ -1050,6 +1051,12 @@ fn spawn_renderer(app: Arc<App>) {
             let settings = app.renderer.lock().unwrap().clone();
             if !settings.active {
                 pushed_effect.clear();
+                // Offscreen: report black rather than the last frame drawn.
+                let mut stored = app.frame.lock().unwrap();
+                if stored.iter().any(|(r, g, b)| *r + *g + *b > 0) {
+                    *stored = vec![(0, 0, 0); render::CELLS];
+                }
+                drop(stored);
                 std::thread::sleep(Duration::from_millis(80));
                 continue;
             }
@@ -1068,6 +1075,16 @@ fn spawn_renderer(app: Arc<App>) {
             }
 
             let mut guard = app.keyboard.lock().unwrap();
+
+            // Re-check now that we own the device: if a hardware effect was
+            // selected while this frame was being computed, pushing it would
+            // drag the board back into custom-frame mode and kill that effect.
+            if !app.renderer.lock().unwrap().active {
+                pushed_effect.clear();
+                drop(guard);
+                continue;
+            }
+
             if guard.is_none() && std::time::Instant::now() >= next_open {
                 *guard = hid::Keyboard::open(PRODUCT_ID).ok();
                 if guard.is_none() {
@@ -1076,20 +1093,22 @@ fn spawn_renderer(app: Arc<App>) {
                 }
             }
             if let Some(keyboard) = guard.as_ref() {
-                if pushed_effect != settings.effect {
-                    let _ = keyboard.write(&report::custom_effect());
-                    pushed_effect = settings.effect.clone();
-                }
+                // Re-assert the custom mode every frame: the board drops out of it
+                // when any other effect command lands, and a dropped frame would
+                // otherwise leave the keyboard frozen on the last one.
+                let _ = keyboard.exchange(&report::custom_effect());
+                pushed_effect = settings.effect.clone();
+
                 for row in 0..render::ROWS {
                     let cells = &frame[row * render::COLS..(row + 1) * render::COLS];
-                    let _ = keyboard.write(&report::custom_frame_row(row, cells));
+                    // Read back the status, like the paint path does; write-only
+                    // frames were being dropped.
+                    let _ = keyboard.exchange(&report::custom_frame_row(row, cells));
                 }
             }
             drop(guard);
 
-            // ~40 frames a second is past the point where the eye notices,
-            // and leaves the USB link room for effect changes.
-            std::thread::sleep(Duration::from_millis(22));
+            std::thread::sleep(Duration::from_millis(12));
         }
     });
 }

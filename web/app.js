@@ -208,6 +208,14 @@ const dom = {
   remap2Add: document.getElementById("remap2-add"),
   remaps2: document.getElementById("remaps2"),
   remaps2Empty: document.getElementById("remaps2-empty"),
+  gamma: document.getElementById("gamma"),
+  gammaOut: document.getElementById("gamma-out"),
+  gainR: document.getElementById("gain-r"),
+  gainG: document.getElementById("gain-g"),
+  gainB: document.getElementById("gain-b"),
+  gainROut: document.getElementById("gain-r-out"),
+  gainGOut: document.getElementById("gain-g-out"),
+  gainBOut: document.getElementById("gain-b-out"),
 };
 
 let state = {
@@ -222,13 +230,16 @@ let state = {
   driver: true,
   game_mode: false,
   macro_mode: false,
+  gamma: 1,
+  gain_r: 1,
+  gain_g: 1,
+  gain_b: 1,
 };
 let presets = [];
 let firmware = null;
 let tool = "brush";
 let boards = [];
 let applyTimer = null;
-let flashes = new Map();
 let frameTimer = null;
 let frameColors = [];
 let keysTimer = null;
@@ -492,66 +503,43 @@ function paintKeyEditing(entry, color, painted) {
 /* ---------------------------------------------------------------- preview */
 
 function keyColors(now) {
-  const base = hexToRgb(state.color);
-  const still = reducedMotion.matches;
   const colors = new Map();
-  const push = (color, intensity) => ({ color, intensity });
 
-  if (state.effect === "off") {
-    for (const entry of boards[0].keys) colors.set(entry.code, push(CAP_BASE, 0));
-  } else if (state.effect === "paint") {
-    for (const entry of boards[0].keys) {
-      const hex = state.paint[entry.group.dataset.cell];
-      colors.set(entry.code, hex ? push(hexToRgb(hex), 1) : push(CAP_BASE, 0));
+  for (const entry of boards[0].keys) {
+    const cell = entry.group.dataset.cell;
+    let color = CAP_BASE;
+    let intensity = 0;
+
+    if (state.effect === "off") {
+      colors.set(entry.code, { color, intensity });
+      continue;
     }
-  } else if (state.effect === "spectrum") {
-    const t = still ? 0 : now * 0.000045;
-    for (const entry of boards[0].keys) {
-      const hue = ((entry.x / (18.5 * STEP)) * 260 + t * 360) % 360;
-      colors.set(entry.code, push(hsv(hue, 0.82, 1), 1));
+
+    if (state.effect === "paint") {
+      const hex = cell ? state.paint[cell] : null;
+      colors.set(entry.code, hex
+        ? { color: hexToRgb(hex), intensity: 1 }
+        : { color: CAP_BASE, intensity: 0 });
+      continue;
     }
-  } else if (state.effect === "wave") {
-    const t = still ? 0.35 : (now * 0.00013) % 1;
-    const head = state.direction === 2 ? 1 - t : t;
-    for (const entry of boards[0].keys) {
-      const position = entry.x / (18.5 * STEP);
-      const distance = Math.abs(position - head);
-      // Gaussian falloff reads as a soft band instead of a hard edge.
-      const intensity = Math.exp(-(distance * distance) * 14);
-      colors.set(entry.code, push(base, 0.08 + intensity * 0.92));
+
+    // Everything else is drawn by the service; show exactly what it sent.
+    if (cell && frameColors.length === 132) {
+      const [row, col] = cell.split(",").map(Number);
+      color = hexToRgb(frameColors[row * 22 + col]);
+      intensity = 1;
+    } else {
+      color = hexToRgb(state.color);
+      intensity = 0.35;
     }
-  } else if (state.effect === "breath") {
-    const pulse = still ? 0.6 : 0.02 + 0.98 * (0.5 - 0.5 * Math.cos(now * 0.0011));
-    const second = hexToRgb(state.color2);
-    const shade = state.breath === "dual"
-      ? mix(base, second, (Math.sin(now * 0.0008) + 1) / 2)
-      : base;
-    for (const entry of boards[0].keys) colors.set(entry.code, push(shade, pulse));
-  } else if (SOFTWARE.has(state.effect)) {
-    for (const entry of boards[0].keys) {
-      const cell = entry.group.dataset.cell;
-      let color = CAP_BASE;
-      if (cell && frameColors.length === 132) {
-        const [row, col] = cell.split(",").map(Number);
-        color = hexToRgb(frameColors[row * 22 + col]);
-      }
-      colors.set(entry.code, push(color, 1));
-    }
-  } else if (state.effect === "reactive") {
-    for (const entry of boards[0].keys) colors.set(entry.code, push(base, 0.18));
-    if (!still) {
-      if (flashes.size < 3 && Math.random() < 0.07) {
-        const pool = boards[0].keys;
-        flashes.set(pool[Math.floor(Math.random() * pool.length)].code, now + 420);
-      }
-      for (const [code, expiry] of flashes) {
-        if (now > expiry) flashes.delete(code);
-        else colors.set(code, push(base, 1));
-      }
-    }
-  } else {
-    for (const entry of boards[0].keys) colors.set(entry.code, push(base, 1));
+
+    // The board dims via its own brightness cap; mirror that here.
+    colors.set(entry.code, {
+      color,
+      intensity: intensity * (0.25 + 0.75 * (state.brightness / 100)),
+    });
   }
+
   return colors;
 }
 
@@ -628,6 +616,10 @@ const payload = () => ({
   driver: state.driver,
   game_mode: state.game_mode,
   macro_mode: state.macro_mode,
+  gamma: state.gamma,
+  gain_r: state.gain_r,
+  gain_g: state.gain_g,
+  gain_b: state.gain_b,
 });
 
 async function request(url, options = {}) {
@@ -656,13 +648,11 @@ async function pollState() {
 }
 
 function syncPolling() {
-  const wanted = SOFTWARE.has(state.effect)
-    && currentView === "lighting"
-    && !document.hidden;
+  const wanted = currentView === "lighting" && !document.hidden
+    && state.effect !== "off" && state.effect !== "paint";
   if (wanted && frameTimer === null) {
-    frameColors = [];
     fetchFrame();
-    frameTimer = setInterval(fetchFrame, 60);
+    frameTimer = setInterval(fetchFrame, 80);
   } else if (!wanted && frameTimer !== null) {
     clearInterval(frameTimer);
     frameTimer = null;
@@ -797,6 +787,17 @@ function syncColor() {
   reflectColor();
 }
 
+function syncCalibration() {
+  dom.gamma.value = String(state.gamma);
+  dom.gammaOut.value = Number(state.gamma).toFixed(2);
+  dom.gainR.value = String(Math.round(state.gain_r * 100));
+  dom.gainG.value = String(Math.round(state.gain_g * 100));
+  dom.gainB.value = String(Math.round(state.gain_b * 100));
+  dom.gainROut.value = String(Math.round(state.gain_r * 100));
+  dom.gainGOut.value = String(Math.round(state.gain_g * 100));
+  dom.gainBOut.value = String(Math.round(state.gain_b * 100));
+}
+
 function syncBrightness() {
   dom.brightness.value = String(state.brightness);
   dom.brightnessOut.value = String(state.brightness);
@@ -839,6 +840,7 @@ function syncAll() {
   syncEffects();
   syncColor();
   syncBrightness();
+  syncCalibration();
   syncSwitches();
 }
 
@@ -921,6 +923,22 @@ function bind() {
   dom.hex.addEventListener("keydown", (event) => {
     if (event.key === "Enter") dom.hex.blur();
   });
+
+  const bindCalibration = (input, output, key, scale) => {
+    input.addEventListener("input", () => {
+      state[key] = Number(input.value) * scale;
+      output.value = key === "gamma"
+        ? state[key].toFixed(2)
+        : String(Math.round(Number(input.value)));
+      invalidate();
+      apply();
+    });
+  };
+
+  bindCalibration(dom.gamma, dom.gammaOut, "gamma", 1);
+  bindCalibration(dom.gainR, dom.gainROut, "gain_r", 0.01);
+  bindCalibration(dom.gainG, dom.gainGOut, "gain_g", 0.01);
+  bindCalibration(dom.gainB, dom.gainBOut, "gain_b", 0.01);
 
   dom.brightness.addEventListener("input", () => {
     state.brightness = Number(dom.brightness.value);

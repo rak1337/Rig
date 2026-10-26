@@ -19,6 +19,11 @@ pub struct Settings {
     pub speed: f32,
     /// 0..=1
     pub brightness: f32,
+    pub direction: u8,
+    pub breath: String,
+    /// Display gamma: LED output is not linear, so a plain byte copy reads wrong.
+    pub gamma: f32,
+    pub gain: (f32, f32, f32),
 }
 
 impl Default for Settings {
@@ -30,16 +35,19 @@ impl Default for Settings {
             c2: (10, 132, 255),
             speed: 2.0,
             brightness: 1.0,
+            direction: 1,
+            breath: "single".into(),
+            gamma: 1.0,
+            gain: (1.0, 1.0, 1.0),
         }
     }
 }
 
 /// Effects this module renders. Everything else is a device command.
+/// Everything except "off" and "paint" is drawn here, so a colour means the
+/// same thing whichever effect you pick.
 pub fn is_software(effect: &str) -> bool {
-    matches!(
-        effect,
-        "fire" | "starlight" | "ripple" | "gradient" | "marquee" | "comet" | "type"
-    )
+    !matches!(effect, "off" | "paint")
 }
 
 fn hash(x: u32, y: u32, seed: u32) -> f32 {
@@ -52,9 +60,17 @@ fn hash(x: u32, y: u32, seed: u32) -> f32 {
     (h & 0xffff) as f32 / 65_535.0
 }
 
-fn scale(color: (f32, f32, f32), brightness: f32) -> (u8, u8, u8) {
-    let c = |v: f32| (v * brightness).clamp(0.0, 255.0) as u8;
-    (c(color.0), c(color.1), c(color.2))
+fn scale(color: (f32, f32, f32), settings: &Settings) -> (u8, u8, u8) {
+    let gamma = settings.gamma.clamp(0.4, 3.0);
+    let channel = |v: f32, gain: f32| {
+        let normalised = (v / 255.0).clamp(0.0, 1.0);
+        (normalised.powf(gamma) * gain.clamp(0.2, 2.5) * 255.0).clamp(0.0, 255.0) as u8
+    };
+    (
+        channel(color.0 * settings.brightness, settings.gain.0),
+        channel(color.1 * settings.brightness, settings.gain.1),
+        channel(color.2 * settings.brightness, settings.gain.2),
+    )
 }
 
 fn rgb((r, g, b): (u8, u8, u8)) -> (f32, f32, f32) {
@@ -169,12 +185,67 @@ pub fn frame(settings: &Settings, time: f32, presses: &[(usize, f32)]) -> Vec<(u
                     mul(c1, intensity)
                 }
 
+                "static" => c1,
+
+                "wave" => {
+                    let t = (time * 0.13 * speed) % 1.0;
+                    let head = if settings.direction == 2 { 1.0 - t } else { t };
+                    let distance = x - head;
+                    let intensity = (-(distance * distance) * 14.0).exp();
+                    mul(c1, 0.08 + intensity * 0.92)
+                }
+
+                "spectrum" => {
+                    let hue = ((x * 260.0) + time * 26.0 * speed) % 360.0;
+                    let (r, g, b) = hue_to_rgb(hue);
+                    (r * 255.0, g * 255.0, b * 255.0)
+                }
+
+                "breath" => {
+                    let pulse = 0.02 + 0.98 * (0.5 - 0.5 * (time * 1.1 * speed).cos());
+                    let brush = match settings.breath.as_str() {
+                        "dual" => mix(c1, c2, (0.5 - 0.5 * (time * 0.8 * speed).cos()) as f32),
+                        "random" => {
+                            let hue = hash(0, 0, (time * 0.6 * speed) as u32) * 360.0;
+                            let (r, g, b) = hue_to_rgb(hue);
+                            (r * 255.0, g * 255.0, b * 255.0)
+                        }
+                        _ => c1,
+                    };
+                    mul(brush, pulse)
+                }
+
+                "reactive" => {
+                    let mut lit: f32 = 0.12;
+                    for (cell, age) in presses {
+                        if *cell == index {
+                            lit = lit.max((1.0 - age / 0.35).max(0.0));
+                        }
+                    }
+                    mul(c1, lit)
+                }
+
                 _ => (0.0, 0.0, 0.0),
             };
 
-            out[index] = scale(color, settings.brightness);
+            out[index] = scale(color, settings);
         }
     }
 
     out
+}
+
+fn hue_to_rgb(hue: f32) -> (f32, f32, f32) {
+    let h = hue.rem_euclid(360.0) / 60.0;
+    let sector = h.floor();
+    let fraction = h - sector;
+    let (r, g, b) = match sector as i32 {
+        0 => (1.0, fraction, 0.0),
+        1 => (1.0 - fraction, 1.0, 0.0),
+        2 => (0.0, 1.0, fraction),
+        3 => (0.0, 1.0 - fraction, 1.0),
+        4 => (fraction, 0.0, 1.0),
+        _ => (1.0, 0.0, 1.0 - fraction),
+    };
+    (r, g, b)
 }

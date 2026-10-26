@@ -22,12 +22,7 @@ pub const STATUS_OK: u8 = 0x02;
 
 // Matrix effect ids.
 pub const FX_OFF: u8 = 0x00;
-pub const FX_WAVE: u8 = 0x01;
-pub const FX_REACTIVE: u8 = 0x02;
-pub const FX_BREATHING: u8 = 0x03;
-pub const FX_SPECTRUM: u8 = 0x04;
 pub const FX_CUSTOM: u8 = 0x05;
-pub const FX_STATIC: u8 = 0x06;
 
 // LED ids and storage selectors.
 const VARSTORE: u8 = 0x01;
@@ -69,39 +64,8 @@ fn effect(effect_id: u8, args: &[u8]) -> [u8; REPORT_LEN] {
     build(CLASS_LED, 0x0A, payload.len() as u8, &payload)
 }
 
-pub fn static_effect(r: u8, g: u8, b: u8) -> [u8; REPORT_LEN] {
-    effect(FX_STATIC, &[r, g, b])
-}
-
-pub fn wave(direction: u8) -> [u8; REPORT_LEN] {
-    effect(FX_WAVE, &[direction.clamp(1, 2)])
-}
-
-pub fn spectrum() -> [u8; REPORT_LEN] {
-    effect(FX_SPECTRUM, &[])
-}
-
 pub fn off() -> [u8; REPORT_LEN] {
     effect(FX_OFF, &[])
-}
-
-pub fn reactive(speed: u8, r: u8, g: u8, b: u8) -> [u8; REPORT_LEN] {
-    effect(FX_REACTIVE, &[speed.clamp(1, 4), r, g, b])
-}
-
-pub fn breath_single(r: u8, g: u8, b: u8) -> [u8; REPORT_LEN] {
-    effect(FX_BREATHING, &[0x01, r, g, b, 0, 0, 0])
-}
-
-pub fn breath_dual(c1: (u8, u8, u8), c2: (u8, u8, u8)) -> [u8; REPORT_LEN] {
-    effect(
-        FX_BREATHING,
-        &[0x02, c1.0, c1.1, c1.2, c2.0, c2.1, c2.2],
-    )
-}
-
-pub fn breath_random() -> [u8; REPORT_LEN] {
-    effect(FX_BREATHING, &[0x03])
 }
 
 /// Switch the matrix into custom-frame mode. Frames are pushed with

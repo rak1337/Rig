@@ -296,6 +296,34 @@
       </section>
     </div>
 
+    <section class="card" aria-labelledby="cal-title" style="margin-top:16px">
+      <h2 id="cal-title">Colour calibration</h2>
+      <p class="hint">
+        LEDs are not linear, and each channel drifts. Raise gamma to deepen the
+        curve, or trim a channel until the keyboard matches the colour you picked.
+      </p>
+      <div class="row">
+        <label class="row-label" for="gamma">Gamma</label>
+        <input type="range" id="gamma" min="0.5" max="2.6" step="0.05" value="1">
+        <output class="bare" id="gamma-out">1.00</output>
+      </div>
+      <div class="row">
+        <label class="row-label" for="gain-r">Red</label>
+        <input type="range" id="gain-r" min="30" max="200" step="1" value="100">
+        <output id="gain-r-out">100</output>
+      </div>
+      <div class="row">
+        <label class="row-label" for="gain-g">Green</label>
+        <input type="range" id="gain-g" min="30" max="200" step="1" value="100">
+        <output id="gain-g-out">100</output>
+      </div>
+      <div class="row">
+        <label class="row-label" for="gain-b">Blue</label>
+        <input type="range" id="gain-b" min="30" max="200" step="1" value="100">
+        <output id="gain-b-out">100</output>
+      </div>
+    </section>
+
     <p class="hint">
       Firmware macros and key remapping live on the keyboard and are programmed from
       Windows Synapse. Everything here is driven directly over USB.

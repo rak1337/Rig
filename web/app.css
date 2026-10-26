@@ -491,6 +491,9 @@ output {
 
 output::after { content: "%"; color: var(--dimmer); }
 
+output.bare { min-width: 46px; }
+output.bare::after { content: ""; }
+
 .segmented {
   display: inline-flex;
   border: 1px solid var(--line-2);

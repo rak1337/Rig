@@ -186,25 +186,6 @@ impl Keyboard {
         }
     }
 
-    /// Send a report without waiting for a response. Animation frames are
-    /// write-only, which keeps 6-report frames inside a 60 Hz budget.
-    pub fn write(&self, report: &[u8; REPORT_LEN]) -> Result<(), String> {
-        let result = unsafe {
-            IOHIDDeviceSetReport(
-                self.device,
-                REPORT_TYPE_FEATURE,
-                0,
-                report.as_ptr(),
-                REPORT_LEN as isize,
-            )
-        };
-        if result == 0 {
-            Ok(())
-        } else {
-            Err(format!("SET_REPORT failed (0x{result:x})"))
-        }
-    }
-
     /// Send one 90-byte report and read the device's response.
     pub fn exchange(&self, report: &[u8; REPORT_LEN]) -> Result<[u8; REPORT_LEN], String> {
         unsafe {
