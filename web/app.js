@@ -1,4 +1,4 @@
-/* Open Razor — console for the BlackWidow TE Chroma.
+/* Rig — console for the BlackWidow TE Chroma.
    The Rust service owns the USB protocol; this file is state, rendering, and HTTP. */
 
 const U = 44;
@@ -976,7 +976,7 @@ async function boot() {
     renderPresets();
   } catch {
     setStatus(false);
-    showAlert("The local service isn’t running. Start `open-razor` and reload this page.");
+    showAlert("The local service isn’t running. Start `rig` and reload this page.");
   }
 
   invalidate();

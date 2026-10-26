@@ -107,7 +107,7 @@ impl App {
         if let Some(dir) = path.parent() {
             if let Err(err) = std::fs::create_dir_all(dir) {
                 eprintln!(
-                    "open-razor: could not create {}: {err}",
+                    "rig: could not create {}: {err}",
                     dir.display()
                 );
                 return;
@@ -116,7 +116,7 @@ impl App {
         // A read-only home is worth a word rather than a silent loss of presets.
         if let Err(err) = std::fs::write(&path, json) {
             eprintln!(
-                "open-razor: could not save state to {}: {err}\n\
+                "rig: could not save state to {}: {err}\n\
                  presets will not persist until that path is writable",
                 path.display()
             );
@@ -271,7 +271,7 @@ fn parse_color(value: &str) -> Option<(u8, u8, u8)> {
 fn store_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
     PathBuf::from(home)
-        .join("Library/Application Support/OpenRazor")
+        .join("Library/Application Support/Rig")
         .join("state.json")
 }
 
@@ -370,17 +370,17 @@ fn main() {
 
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "open-razor — lighting console for Razer keyboards on macOS\n\n\
-             usage: open-razor [--port 7311] [--no-open] [--no-restore]\n\
-             \x20      open-razor --probe\n\
-             \x20      open-razor --install-login | --uninstall-login\n\
-             \x20      open-razor --test\n\n\
+            "rig — a control console for Razer keyboards on macOS\n\n\
+             usage: rig [--port 7311] [--no-open] [--no-restore]\n\
+             \x20      rig --probe\n\
+             \x20      rig --install-login | --uninstall-login\n\
+             \x20      rig --test\n\n\
              --probe            read firmware, device mode, brightness and the\n\
              \x20                  indicator LEDs straight from the board\n\
              --install-login    start at login and re-apply the saved look\n\
              --no-restore       do not re-apply the saved state on launch\n\n\
              Serves the console at http://127.0.0.1:7311. State and presets live in\n\
-             ~/Library/Application Support/OpenRazor/state.json"
+             ~/Library/Application Support/Rig/state.json"
         );
         return;
     }
@@ -397,13 +397,13 @@ fn main() {
     let store = match Server::http(("127.0.0.1", port)) {
         Ok(server) => server,
         Err(err) => {
-            eprintln!("open-razor: cannot listen on 127.0.0.1:{port}: {err}");
+            eprintln!("rig: cannot listen on 127.0.0.1:{port}: {err}");
             std::process::exit(1);
         }
     };
 
     let url = format!("http://127.0.0.1:{port}");
-    println!("open-razor listening on {url}");
+    println!("rig listening on {url}");
     if open_browser {
         let _ = std::process::Command::new("open").arg(&url).spawn();
     }
@@ -583,7 +583,7 @@ fn launch_agent_path() -> PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
     PathBuf::from(home)
         .join("Library/LaunchAgents")
-        .join("dev.rakshak.open-razor.plist")
+        .join("dev.rakshak.rig.plist")
 }
 
 fn install_login() -> Result<(), String> {
@@ -598,15 +598,15 @@ fn install_login() -> Result<(), String> {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-  <key>Label</key><string>dev.rakshak.open-razor</string>
+  <key>Label</key><string>dev.rakshak.rig</string>
   <key>ProgramArguments</key>
   <array>
     <string>{}</string>
     <string>--no-open</string>
   </array>
   <key>RunAtLoad</key><true/>
-  <key>StandardOutPath</key><string>/tmp/open-razor.log</string>
-  <key>StandardErrorPath</key><string>/tmp/open-razor.log</string>
+  <key>StandardOutPath</key><string>/tmp/rig.log</string>
+  <key>StandardErrorPath</key><string>/tmp/rig.log</string>
 </dict>
 </plist>
 "#,

@@ -1,8 +1,8 @@
 [package]
-name = "open-razor"
+name = "rig"
 version = "0.1.0"
 edition = "2021"
-description = "Lighting console for the Razer BlackWidow Tournament Edition Chroma"
+description = "A control console for Razer keyboards on macOS"
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }

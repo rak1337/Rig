@@ -1,8 +1,9 @@
-# Open Razor
+# Rig
 
-A lighting console for Razer keyboards on macOS. It talks to the keyboard over USB
-directly — no Razer Synapse, no kernel extension, no Electron — and serves its own
-interface in the browser.
+A control console for Razer keyboards on macOS: lighting, per-key frames, presets
+and device settings, in one place. It talks to the keyboard over USB directly — no
+Razer Synapse, no kernel extension, no Electron — and serves its own interface in
+the browser.
 
 It exists because Razer never shipped working macOS support for legacy Chroma
 hardware. The Synapse build available for this board on macOS is the old
@@ -33,25 +34,25 @@ Every command below returns status `0x02` (successful) from the device.
 
 ```sh
 cargo build --release
-./target/release/open-razor
+./target/release/rig
 ```
 
 It listens on `http://127.0.0.1:7311` and opens the console in your browser.
 
 ```sh
-open-razor [--port 7311] [--no-open] [--no-restore]
-open-razor --probe               # read the board's current state and exit
-open-razor --install-login       # start at login, re-apply the saved look
-open-razor --uninstall-login
-open-razor --test                # round-trip a report to the keyboard and exit
+rig [--port 7311] [--no-open] [--no-restore]
+rig --probe               # read the board's current state and exit
+rig --install-login       # start at login, re-apply the saved look
+rig --uninstall-login
+rig --test                # round-trip a report to the keyboard and exit
 ```
 
-State and presets live in `~/Library/Application Support/OpenRazor/state.json`.
+State and presets live in `~/Library/Application Support/Rig/state.json`.
 
 ## What the board actually holds
 
 ```sh
-open-razor --probe
+rig --probe
 ```
 
 prints what the keyboard reports about itself: firmware, whether software or
@@ -67,12 +68,12 @@ That means "save the config to the keyboard" is not possible on a TE Chroma. The
 durable equivalent is to re-apply the look on each host:
 
 ```sh
-open-razor --install-login    # LaunchAgent: start at login, restore the saved look
-open-razor --uninstall-login
+rig --install-login    # LaunchAgent: start at login, restore the saved look
+rig --uninstall-login
 ```
 
 The login item starts the service at login and re-applies
-`~/Library/Application Support/OpenRazor/state.json`, so macOS comes back to your
+`~/Library/Application Support/Rig/state.json`, so macOS comes back to your
 look without you touching it. On Windows, Synapse does the same job. Whichever
 machine applies last wins while both are connected.
 
@@ -81,7 +82,7 @@ machine applies last wins while both are connected.
 macOS gates keyboard HID access behind **Input Monitoring**. On first run the app
 asks for it; if it is missing you will see `macOS Input Monitoring permission is
 required`. Grant it in System Settings → Privacy & Security → Input Monitoring for
-the terminal (or app) you launch `open-razor` from, then run it again.
+the terminal (or app) you launch `rig` from, then run it again.
 
 ## How it works
 
@@ -137,7 +138,9 @@ full-size boards), and the spacebar is a single LED at `(5, 7)`.
   need their PID — and possibly a different effect dialect; the extended-matrix
   boards use a different command set.
 - Firmware macros and key remapping live on the keyboard and are programmed from
-  Windows Synapse. They are not reimplemented here.
+  Windows Synapse. They are not reimplemented here yet: doing it properly on
+  macOS means an event tap (Accessibility permission) for remapping and macro
+  playback, which is a separate piece of work from the lighting path.
 - Ripple and starlight are not in this board's firmware matrix effects.
 - Effects are host-driven: unplugging the keyboard clears them. Reopening the app
   re-applies the saved state.
