@@ -1,3 +1,4 @@
+mod frontmost;
 mod hid;
 mod keys;
 mod render;
@@ -70,9 +71,24 @@ struct KeysStore {
     #[serde(default)]
     remaps: Vec<(u16, u16)>,
     #[serde(default)]
+    remaps2: Vec<(u16, u16)>,
+    #[serde(default)]
+    hypershift: Option<u16>,
+    #[serde(default)]
     macros: Vec<keys::Macro>,
     #[serde(default)]
     next_macro: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct Profile {
+    id: u64,
+    name: String,
+    #[serde(default)]
+    bundle: Option<String>,
+    state: LightState,
+    #[serde(default)]
+    remaps: Vec<(u16, u16)>,
 }
 
 #[derive(Serialize, Deserialize, Default)]
@@ -82,6 +98,14 @@ struct Stored {
     next_id: u64,
     #[serde(default)]
     keys: KeysStore,
+    #[serde(default)]
+    profiles: Vec<Profile>,
+    #[serde(default)]
+    next_profile: u64,
+    #[serde(default)]
+    active_profile: Option<u64>,
+    #[serde(default)]
+    revision: u64,
 }
 
 struct App {
@@ -103,6 +127,10 @@ impl App {
                 presets: Vec::new(),
                 next_id: 1,
                 keys: KeysStore::default(),
+                profiles: Vec::new(),
+                next_profile: 1,
+                active_profile: None,
+                revision: 0,
             });
         App {
             stored: Mutex::new(stored),
@@ -176,6 +204,49 @@ impl App {
         Ok(firmware_guard.clone().unwrap_or_default())
     }
 
+    fn activate_profile(&self, id: u64) {
+        let profile = {
+            let stored = self.stored.lock().unwrap();
+            stored.profiles.iter().find(|item| item.id == id).cloned()
+        };
+        let Some(profile) = profile else { return };
+        let state = profile.state.clone();
+        {
+            let mut stored = self.stored.lock().unwrap();
+            stored.state = state.clone();
+            stored.keys.remaps = profile.remaps.clone();
+            stored.active_profile = Some(id);
+            stored.revision += 1;
+        }
+        self.sync_remaps();
+        if let Err(err) = self.apply(&state) {
+            eprintln!("rig: profile {} could not be applied: {err}", profile.name);
+        }
+        self.save();
+    }
+
+    fn profile_for_bundle(&self, bundle: &str) -> Option<u64> {
+        let stored = self.stored.lock().unwrap();
+        stored
+            .profiles
+            .iter()
+            .find(|item| item.bundle.as_deref() == Some(bundle))
+            .map(|item| item.id)
+    }
+
+    fn active_profile(&self) -> Option<u64> {
+        self.stored.lock().unwrap().active_profile
+    }
+
+    fn profiles_payload(&self) -> ProfilesPayload {
+        let stored = self.stored.lock().unwrap();
+        ProfilesPayload {
+            active: stored.active_profile,
+            frontmost: frontmost::frontmost_bundle(),
+            profiles: stored.profiles.clone(),
+        }
+    }
+
     fn keys_payload(&self) -> KeysPayload {
         let stored = self.stored.lock().unwrap();
         KeysPayload {
@@ -183,6 +254,8 @@ impl App {
             recording: self.engine.is_recording(),
             steps: self.engine.recorded_len(),
             remaps: stored.keys.remaps.clone(),
+            remaps2: stored.keys.remaps2.clone(),
+            hypershift: stored.keys.hypershift,
             macros: stored.keys.macros.clone(),
         }
     }
@@ -201,8 +274,16 @@ impl App {
     }
 
     fn sync_remaps(&self) {
-        let remaps = self.stored.lock().unwrap().keys.remaps.clone();
+        let (remaps, layer2, hyper) = {
+            let stored = self.stored.lock().unwrap();
+            (
+                stored.keys.remaps.clone(),
+                stored.keys.remaps2.clone(),
+                stored.keys.hypershift,
+            )
+        };
         self.engine.set_remaps(&remaps);
+        self.engine.set_hypershift(hyper, &layer2);
     }
 
     /// Try to hold a device handle, returning why it failed (if it did).
@@ -223,6 +304,7 @@ impl App {
     fn payload(&self, error: Option<String>) -> Payload {
         let stored = self.stored.lock().unwrap();
         Payload {
+            revision: stored.revision,
             connected: self.keyboard.lock().unwrap().is_some(),
             firmware: self.firmware.lock().unwrap().clone(),
             error,
@@ -326,6 +408,7 @@ fn store_path() -> PathBuf {
 
 #[derive(Serialize)]
 struct Payload {
+    revision: u64,
     connected: bool,
     firmware: Option<String>,
     error: Option<String>,
@@ -340,11 +423,20 @@ struct PresetRequest {
 }
 
 #[derive(Serialize)]
+struct ProfilesPayload {
+    active: Option<u64>,
+    frontmost: Option<String>,
+    profiles: Vec<Profile>,
+}
+
+#[derive(Serialize)]
 struct KeysPayload {
     trusted: bool,
     recording: bool,
     steps: usize,
     remaps: Vec<(u16, u16)>,
+    remaps2: Vec<(u16, u16)>,
+    hypershift: Option<u16>,
     macros: Vec<keys::Macro>,
 }
 
@@ -352,6 +444,8 @@ struct KeysPayload {
 struct RemapRequest {
     from: u16,
     to: u16,
+    #[serde(default)]
+    layer: u8,
 }
 
 #[derive(Deserialize)]
@@ -461,6 +555,7 @@ fn main() {
     app.sync_triggers();
     app.engine.start();
     spawn_renderer(Arc::clone(&app));
+    spawn_watcher(Arc::clone(&app));
 
     let store = match Server::http(("127.0.0.1", port)) {
         Ok(server) => server,
@@ -528,6 +623,7 @@ fn main() {
                 {
                     let mut stored = app.stored.lock().unwrap();
                     stored.state = state.clone();
+                    stored.revision += 1;
                 }
                 app.save();
                 match outcome {
@@ -577,6 +673,80 @@ fn main() {
                 let payload = app.payload(None);
                 respond_json(request, &payload, 200);
             }
+            (Method::Get, "/api/profiles") => {
+                let payload = app.profiles_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/profiles") => {
+                #[derive(Deserialize)]
+                struct NewProfile {
+                    name: String,
+                    #[serde(default)]
+                    bundle: Option<String>,
+                }
+                let Some(req) = read_json::<NewProfile>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    let id = if stored.next_profile == 0 { 1 } else { stored.next_profile };
+                    stored.next_profile = id + 1;
+                    let state = stored.state.clone();
+                    let remaps = stored.keys.remaps.clone();
+                    stored.profiles.push(Profile {
+                        id,
+                        name: req.name.trim().to_string(),
+                        bundle: req.bundle,
+                        state,
+                        remaps,
+                    });
+                }
+                app.save();
+                let payload = app.profiles_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/profiles/activate") => {
+                let Some(req) = read_json::<IdRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                app.activate_profile(req.id);
+                let payload = app.profiles_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/profiles/delete") => {
+                let Some(req) = read_json::<IdRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    stored.profiles.retain(|item| item.id != req.id);
+                    if stored.active_profile == Some(req.id) {
+                        stored.active_profile = None;
+                    }
+                }
+                app.save();
+                let payload = app.profiles_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/profiles/bind") => {
+                let Some(req) = read_json::<IdRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                let bundle = frontmost::frontmost_bundle();
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    if let Some(item) = stored.profiles.iter_mut().find(|item| item.id == req.id) {
+                        item.bundle = bundle;
+                    }
+                }
+                app.save();
+                let payload = app.profiles_payload();
+                respond_json(request, &payload, 200);
+            }
             (Method::Get, "/api/keys") => {
                 let payload = app.keys_payload();
                 respond_json(request, &payload, 200);
@@ -588,8 +758,13 @@ fn main() {
                 };
                 {
                     let mut stored = app.stored.lock().unwrap();
-                    stored.keys.remaps.retain(|(from, _)| *from != req.from);
-                    stored.keys.remaps.push((req.from, req.to));
+                    let table = if req.layer == 2 {
+                        &mut stored.keys.remaps2
+                    } else {
+                        &mut stored.keys.remaps
+                    };
+                    table.retain(|(from, _)| *from != req.from);
+                    table.push((req.from, req.to));
                 }
                 app.sync_remaps();
                 app.save();
@@ -603,7 +778,12 @@ fn main() {
                 };
                 {
                     let mut stored = app.stored.lock().unwrap();
-                    stored.keys.remaps.retain(|(from, _)| *from != req.from);
+                    let table = if req.layer == 2 {
+                        &mut stored.keys.remaps2
+                    } else {
+                        &mut stored.keys.remaps
+                    };
+                    table.retain(|(from, _)| *from != req.from);
                 }
                 app.sync_remaps();
                 app.save();
@@ -644,6 +824,24 @@ fn main() {
                     continue;
                 }
                 app.sync_triggers();
+                app.save();
+                let payload = app.keys_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/keys/hypershift") => {
+                #[derive(Deserialize)]
+                struct HyperRequest {
+                    key: Option<u16>,
+                }
+                let Some(req) = read_json::<HyperRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    stored.keys.hypershift = req.key;
+                }
+                app.sync_remaps();
                 app.save();
                 let payload = app.keys_payload();
                 respond_json(request, &payload, 200);
@@ -892,6 +1090,29 @@ fn spawn_renderer(app: Arc<App>) {
             // ~40 frames a second is past the point where the eye notices,
             // and leaves the USB link room for effect changes.
             std::thread::sleep(Duration::from_millis(22));
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// frontmost-app watcher
+// ---------------------------------------------------------------------------
+
+fn spawn_watcher(app: Arc<App>) {
+    std::thread::spawn(move || {
+        let mut last = String::new();
+        loop {
+            if let Some(bundle) = frontmost::frontmost_bundle() {
+                if bundle != last {
+                    last = bundle.clone();
+                    if let Some(id) = app.profile_for_bundle(&bundle) {
+                        if app.active_profile() != Some(id) {
+                            app.activate_profile(id);
+                        }
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(1200));
         }
     });
 }

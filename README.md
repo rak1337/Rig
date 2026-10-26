@@ -73,12 +73,24 @@ Accessibility). Without it the tap is never created and the tab says so.
 | Key remapping | yes | system-wide event tap |
 | Macros with trigger keys | yes | record, play, bind to a key |
 | Presets | yes | local, restored at launch |
-| Per-app profiles | not yet | feasible: watch the frontmost app |
-| Hypershift / Fn layer | not yet | feasible: second remap layer on a modifier |
+| Per-app profiles | yes | switches look and remaps with the frontmost app |
+| Hypershift / Fn layer | yes | hold a chosen key for a second remap set |
 | Audio visualiser | not yet | needs audio capture plus an FFT |
 | Chroma Connect / game integrations | no | Razer's Windows SDK |
 | On-board profiles | no | this board has no profile storage |
 | Polling rate | no | fixed in firmware |
+
+## Profiles and Hypershift
+
+**App profiles** capture the current look *and* remaps. Bind a profile to an app
+and it applies whenever that app comes forward — the watcher reads the frontmost
+bundle identifier once a second and switches when it changes. The console polls a
+revision counter, so a switch made by the watcher shows up in the UI too.
+
+**Hypershift** is a second remap table gated by a held key: choose a key under
+Keys → Hypershift, fill layer 2, and holding that key swaps the remap table while
+it is down. The tap tracks the key's press state itself, so it works with any key
+you pick.
 
 ## What the board actually holds
 

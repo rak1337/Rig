@@ -204,6 +204,22 @@
       </section>
     </div>
 
+    <section class="card" aria-labelledby="hyper-title" style="margin-top:16px">
+      <h2 id="hyper-title">Hypershift</h2>
+      <p class="hint">
+        Hold the chosen key to use a second set of remaps — the same idea as Razer's
+        Hypershift.
+      </p>
+      <div class="macro-actions">
+        <button class="ghost" id="hyper-bind">Choose key</button>
+        <button class="ghost" id="hyper-clear">Turn off</button>
+        <span class="row-meta" id="hyper-state">Not set</span>
+      </div>
+      <button class="primary" id="remap2-add" style="margin-top:12px">Add a layer 2 remap</button>
+      <div class="rows" id="remaps2"></div>
+      <p class="empty" id="remaps2-empty">Layer 2 is empty.</p>
+    </section>
+
     <p class="hint">
       Remaps and macros run as a system-wide event tap, so they need Accessibility
       permission. Recording captures every keypress on the machine until you stop it.
@@ -224,6 +240,21 @@
     <p class="empty" id="presets-empty" hidden>
       Nothing saved yet. Set up a look in Lighting or Studio, then save it here.
     </p>
+
+    <section class="card" aria-labelledby="profiles-title" style="margin-top:16px">
+      <h2 id="profiles-title">App profiles</h2>
+      <div class="macro-actions">
+        <input id="profile-name" placeholder="Profile name" aria-label="Profile name"
+               maxlength="24" autocomplete="off">
+        <button class="primary" id="profile-save">Save current as profile</button>
+      </div>
+      <p class="hint">
+        A profile captures the current look and remaps. Bind one to an app and it
+        applies whenever that app comes to the front.
+      </p>
+      <div class="rows" id="profiles"></div>
+      <p class="empty" id="profiles-empty">No profiles yet.</p>
+    </section>
   </section>
 
   <!-- --------------------------------------------------------------- device -->

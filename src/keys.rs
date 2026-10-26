@@ -78,6 +78,9 @@ struct Shared {
     /// (keycode, when) for every real keypress, drained by the renderer.
     presses: Mutex<Vec<(u16, Instant)>>,
     triggers: Mutex<HashMap<u16, Vec<Step>>>,
+    hyper_key: Mutex<Option<u16>>,
+    layer2: Mutex<HashMap<u16, u16>>,
+    held: Mutex<std::collections::HashSet<u16>>,
 }
 
 #[derive(Clone)]
@@ -123,6 +126,15 @@ impl Engine {
         let mut map = self.shared.remaps.lock().unwrap();
         map.clear();
         for (from, to) in remaps {
+            map.insert(*from, *to);
+        }
+    }
+
+    pub fn set_hypershift(&self, key: Option<u16>, layer2: &[(u16, u16)]) {
+        *self.shared.hyper_key.lock().unwrap() = key;
+        let mut map = self.shared.layer2.lock().unwrap();
+        map.clear();
+        for (from, to) in layer2 {
             map.insert(*from, *to);
         }
     }
@@ -241,8 +253,28 @@ extern "C" fn callback(
             }
         }
 
+        match event_type {
+            KEY_DOWN => {
+                shared.held.lock().unwrap().insert(keycode);
+            }
+            KEY_UP => {
+                shared.held.lock().unwrap().remove(&keycode);
+            }
+            _ => {}
+        }
+
         if event_type != FLAGS_CHANGED {
-            if let Some(target) = shared.remaps.lock().unwrap().get(&keycode).copied() {
+            let hyper = *shared.hyper_key.lock().unwrap();
+            let hypershifted = match hyper {
+                Some(key) => shared.held.lock().unwrap().contains(&key),
+                None => false,
+            };
+            let target = if hypershifted {
+                shared.layer2.lock().unwrap().get(&keycode).copied()
+            } else {
+                shared.remaps.lock().unwrap().get(&keycode).copied()
+            };
+            if let Some(target) = target {
                 CGEventSetIntegerValueField(event, KEYCODE_FIELD, target as i64);
             }
         }

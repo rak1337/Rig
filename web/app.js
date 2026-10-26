@@ -198,6 +198,16 @@ const dom = {
   recordStatus: document.getElementById("record-status"),
   macros: document.getElementById("macros"),
   macrosEmpty: document.getElementById("macros-empty"),
+  profileName: document.getElementById("profile-name"),
+  profileSave: document.getElementById("profile-save"),
+  profiles: document.getElementById("profiles"),
+  profilesEmpty: document.getElementById("profiles-empty"),
+  hyperBind: document.getElementById("hyper-bind"),
+  hyperClear: document.getElementById("hyper-clear"),
+  hyperState: document.getElementById("hyper-state"),
+  remap2Add: document.getElementById("remap2-add"),
+  remaps2: document.getElementById("remaps2"),
+  remaps2Empty: document.getElementById("remaps2-empty"),
 };
 
 let state = {
@@ -223,9 +233,13 @@ let frameTimer = null;
 let frameColors = [];
 let keysTimer = null;
 let keysData = { trusted: false, recording: false, steps: 0, remaps: [], macros: [] };
+let profilesData = { active: null, frontmost: null, profiles: [] };
+let lastRevision = 0;
+let lastApplyAt = 0;
 let capture = null;
 let pendingFrom = null;
 let bindingMacro = null;
+let captureLayer = 1;
 
 /* ------------------------------------------------------------------ colors */
 
@@ -625,6 +639,22 @@ async function request(url, options = {}) {
   return response.json();
 }
 
+async function pollState() {
+  if (document.hidden) return;
+  try {
+    const data = await request("/api/state");
+    if (typeof data.revision !== "number" || data.revision === lastRevision) return;
+    lastRevision = data.revision;
+    // Do not stomp on an edit that is still being sent.
+    if (!data.state || Date.now() - lastApplyAt < 1200) return;
+    state = { ...state, ...data.state };
+    syncAll();
+    invalidate();
+  } catch {
+    /* service restarting */
+  }
+}
+
 function syncPolling() {
   const wanted = SOFTWARE.has(state.effect)
     && currentView === "lighting"
@@ -652,6 +682,7 @@ async function fetchFrame() {
 }
 
 function apply({ immediate = false } = {}) {
+  lastApplyAt = Date.now();
   clearTimeout(applyTimer);
   const send = () => request("/api/apply", { method: "POST", body: JSON.stringify(payload()) })
     .then(updateFromServer)
@@ -662,6 +693,7 @@ function apply({ immediate = false } = {}) {
 
 function updateFromServer(data) {
   if (!data) return;
+  if (typeof data.revision === "number") lastRevision = data.revision;
   if (data.firmware) firmware = data.firmware;
   if (data.presets) presets = data.presets;
   setStatus(data.connected, data.firmware, data.error);
@@ -949,15 +981,47 @@ function bind() {
     invalidate();
   });
 
-  dom.remapAdd.addEventListener("click", () => {
+  const beginCapture = (layer, message, button) => {
     if (capture) {
       cancelCapture();
       return;
     }
     capture = "from";
+    captureLayer = layer;
     pendingFrom = null;
-    dom.remapAdd.textContent = "Cancel";
-    dom.remapHint.textContent = "Press the key you want to change…";
+    if (button) button.textContent = "Cancel";
+    dom.remapHint.textContent = message;
+  };
+
+  dom.remapAdd.addEventListener("click", () => {
+    if (capture) {
+      cancelCapture();
+      return;
+    }
+    beginCapture(1, "Press the key you want to change…", dom.remapAdd);
+  });
+
+  dom.remap2Add.addEventListener("click", () => {
+    if (capture) {
+      cancelCapture();
+      return;
+    }
+    beginCapture(2, "Press the layer 2 key to change…", dom.remap2Add);
+  });
+
+  dom.hyperBind.addEventListener("click", () => {
+    capture = "hyper";
+    dom.remapHint.textContent = "Hold-to-shift key: press it now…";
+  });
+
+  dom.hyperClear.addEventListener("click", () => {
+    request("/api/keys/hypershift", {
+      method: "POST",
+      body: JSON.stringify({ key: null }),
+    }).then((data) => {
+      keysData = data;
+      renderKeys();
+    });
   });
 
   document.addEventListener("keydown", (event) => {
@@ -973,6 +1037,18 @@ function bind() {
       dom.remapHint.textContent = "That key has no mapping yet — try another.";
       return;
     }
+    if (capture === "hyper") {
+      request("/api/keys/hypershift", {
+        method: "POST",
+        body: JSON.stringify({ key: keycode }),
+      }).then((data) => {
+        keysData = data;
+        renderKeys();
+        cancelCapture();
+      });
+      return;
+    }
+
     if (capture === "bind") {
       request("/api/keys/macro/bind", {
         method: "POST",
@@ -995,7 +1071,7 @@ function bind() {
     }
     request("/api/keys/remap", {
       method: "POST",
-      body: JSON.stringify({ from: pendingFrom, to: keycode }),
+      body: JSON.stringify({ from: pendingFrom, to: keycode, layer: captureLayer }),
     }).then((data) => {
       keysData = data;
       renderKeys();
@@ -1024,16 +1100,48 @@ function bind() {
     }
   });
 
+  dom.profileSave.addEventListener("click", () => {
+    const name = dom.profileName.value.trim();
+    if (!name) return;
+    request("/api/profiles", { method: "POST", body: JSON.stringify({ name }) })
+      .then((data) => {
+        profilesData = data;
+        dom.profileName.value = "";
+        renderProfiles();
+      });
+  });
+
+  dom.profiles.addEventListener("click", (event) => {
+    const activate = event.target.closest("[data-activate]");
+    const bind = event.target.closest("[data-bind-app]");
+    const remove = event.target.closest("[data-remove-profile]");
+    const post = (url, body) => request(url, { method: "POST", body: JSON.stringify(body) })
+      .then((data) => {
+        profilesData = data;
+        renderProfiles();
+        return pollState();
+      });
+    if (activate) post("/api/profiles/activate", { id: Number(activate.dataset.activate) });
+    else if (bind) post("/api/profiles/bind", { id: Number(bind.dataset.bindApp) });
+    else if (remove) post("/api/profiles/delete", { id: Number(remove.dataset.removeProfile) });
+  });
+
+  const removeRemap = (from, layer) => request("/api/keys/remap/delete", {
+    method: "POST",
+    body: JSON.stringify({ from, to: 0, layer }),
+  }).then((data) => {
+    keysData = data;
+    renderKeys();
+  });
+
   dom.remaps.addEventListener("click", (event) => {
     const button = event.target.closest("[data-remove]");
-    if (!button) return;
-    request("/api/keys/remap/delete", {
-      method: "POST",
-      body: JSON.stringify({ from: Number(button.dataset.remove), to: 0 }),
-    }).then((data) => {
-      keysData = data;
-      renderKeys();
-    });
+    if (button) removeRemap(Number(button.dataset.remove), 1);
+  });
+
+  dom.remaps2.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove]");
+    if (button) removeRemap(Number(button.dataset.remove), 2);
   });
 
   dom.macros.addEventListener("click", (event) => {
@@ -1142,6 +1250,7 @@ function cancelCapture() {
   pendingFrom = null;
   bindingMacro = null;
   dom.remapAdd.textContent = "Add a remap";
+  dom.remap2Add.textContent = "Add a layer 2 remap";
   dom.remapHint.textContent =
     "Press the key you want to change, then press what it should act as.";
 }
@@ -1191,6 +1300,25 @@ function renderKeys() {
   dom.remaps.replaceChildren(remaps);
   dom.remapsEmpty.hidden = keysData.remaps.length > 0;
 
+  const layer2 = document.createDocumentFragment();
+  for (const [from, to] of keysData.remaps2 || []) {
+    const row = document.createElement("div");
+    row.className = "row-item";
+    row.innerHTML = `
+      <span class="row-main">
+        <span class="keycap">${keyLabel(from)}</span>
+        <span class="row-arrow">→</span>
+        <span class="keycap">${keyLabel(to)}</span>
+      </span>
+      <button class="icon-button" data-remove="${from}" aria-label="Remove remap">×</button>`;
+    layer2.append(row);
+  }
+  dom.remaps2.replaceChildren(layer2);
+  dom.remaps2Empty.hidden = (keysData.remaps2 || []).length > 0;
+  dom.hyperState.textContent = keysData.hypershift == null
+    ? "Not set"
+    : `Hold ${keyLabel(keysData.hypershift)}`;
+
   const macros = document.createDocumentFragment();
   for (const macro of keysData.macros) {
     const row = document.createElement("div");
@@ -1221,6 +1349,44 @@ function renderKeys() {
   }
 }
 
+/* ----------------------------------------------------------------- profiles */
+
+async function fetchProfiles() {
+  try {
+    profilesData = await request("/api/profiles");
+    renderProfiles();
+  } catch {
+    /* service restarting */
+  }
+}
+
+function renderProfiles() {
+  const frag = document.createDocumentFragment();
+  for (const profile of profilesData.profiles) {
+    const row = document.createElement("div");
+    row.className = "row-item";
+    const bound = profile.bundle
+      ? `<span class="row-meta">${escapeHtml(profile.bundle.split(".").pop())}</span>`
+      : `<span class="row-meta">any app</span>`;
+    const active = profilesData.active === profile.id
+      ? `<span class="keycap">active</span>`
+      : `<button class="ghost" data-activate="${profile.id}">Use</button>`;
+    row.innerHTML = `
+      <span class="row-main">
+        <span class="row-name">${escapeHtml(profile.name)}</span>
+        ${bound}
+        ${active}
+      </span>
+      <span class="row-main">
+        <button class="ghost" data-bind-app="${profile.id}">Bind to current app</button>
+        <button class="icon-button" data-remove-profile="${profile.id}" aria-label="Delete profile">×</button>
+      </span>`;
+    frag.append(row);
+  }
+  dom.profiles.replaceChildren(frag);
+  dom.profilesEmpty.hidden = profilesData.profiles.length > 0;
+}
+
 /* -------------------------------------------------------------------- boot */
 
 async function boot() {
@@ -1230,6 +1396,7 @@ async function boot() {
   bind();
   syncAll();
   renderPresets();
+  fetchProfiles();
   invalidate();
 
   try {
@@ -1254,5 +1421,7 @@ document.addEventListener("visibilitychange", () => {
   syncPolling();
   syncKeysPolling();
 });
+
+setInterval(pollState, 2000);
 
 boot();
