@@ -141,6 +141,21 @@ impl App {
         Ok(firmware_guard.clone().unwrap_or_default())
     }
 
+    /// Try to hold a device handle, returning why it failed (if it did).
+    fn ensure_device(&self) -> Option<String> {
+        let mut guard = self.keyboard.lock().unwrap();
+        if guard.is_some() {
+            return None;
+        }
+        match hid::Keyboard::open(PRODUCT_ID) {
+            Ok(keyboard) => {
+                *guard = Some(keyboard);
+                None
+            }
+            Err(err) => Some(err),
+        }
+    }
+
     fn payload(&self, error: Option<String>) -> Payload {
         let stored = self.stored.lock().unwrap();
         Payload {
@@ -403,7 +418,8 @@ fn main() {
                 respond_bytes(request, FONT_MONO.to_vec(), "font/ttf")
             }
             (Method::Get, "/api/state") => {
-                let payload = app.payload(None);
+                let error = app.ensure_device();
+                let payload = app.payload(error);
                 respond_json(request, &payload, 200);
             }
             (Method::Post, "/api/apply") => {
