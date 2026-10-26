@@ -408,7 +408,7 @@ function buildBoard(svg, device) {
   const keys = [];
   const rows = LAYOUTS[device?.layout] || LAYOUTS.generic;
   const perKey = device?.per_key !== false;
-  const lip = device?.logo === false ? 14 : CASE.lip;
+  const lip = 16;
 
   const width = BOARD_W + CASE.pad * 2;
   const height = BOARD_H + CASE.top + lip;
@@ -534,22 +534,6 @@ function buildBoard(svg, device) {
   for (const nav of NAV) draw(nav.code, nav.label, nav.c * STEP, nav.r * STEP, U);
 
   frag.append(keyLayer);
-
-  if (device?.logo !== false) {
-    const emblem = document.createElementNS(ns, "g");
-    emblem.setAttribute("class", "emblem");
-    emblem.setAttribute("transform",
-      `translate(${width / 2} ${CASE.top + BOARD_H + lip / 2})`);
-
-    // Three snake heads around a centre — a triskelion, not the trademark itself.
-    for (let arm = 0; arm < 3; arm++) {
-      const path = document.createElementNS(ns, "path");
-      path.setAttribute("d", "M0 0 C 1.4 -5.4 6 -7.6 9.2 -4.6 C 11.4 -2.4 11.2 1.2 8.6 2.4 C 10 3.6 10.2 6 8.4 7 L 6.2 4.8 C 7.6 3.6 6.8 1.6 5.2 1.6 C 2.4 1.6 0.6 1 0 0 Z");
-      path.setAttribute("transform", `rotate(${arm * 120}) scale(0.82)`);
-      emblem.append(path);
-    }
-    frag.append(emblem);
-  }
 
   svg.replaceChildren(frag);
   svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
