@@ -166,6 +166,9 @@ Point `azmuth.dev` at the tunnel. Binding to loopback and letting the tunnel
 forward is safer than `--host 0.0.0.0`, because then nothing on the local
 network can reach the port directly.
 
+Hosting several apps under one domain (subdomain per app, Access policies,
+routing) is written up in [deploy/README.md](deploy/README.md).
+
 Two things to be clear about before it is public:
 
 - The token is the only access control, and it grants full control — lighting,

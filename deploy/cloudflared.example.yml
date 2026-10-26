@@ -1,0 +1,21 @@
+# ~/.cloudflared/config.yml — one tunnel, one rule per app.
+#
+# Run this file on the machine that hosts the apps you want reachable. Apps that
+# need local hardware (Rig) must live on the Mac; static apps can live on a VPS
+# and be proxied the same way, or simply point their DNS at the VPS instead.
+tunnel: REPLACE_WITH_TUNNEL_UUID
+credentials-file: /Users/REPLACE/.cloudflared/REPLACE_WITH_TUNNEL_UUID.json
+
+ingress:
+  # Needs the keyboard: runs on the Mac, loopback only.
+  - hostname: rig.azmuth.dev
+    service: http://127.0.0.1:7311
+
+  # Any other app on this machine, one rule each.
+  - hostname: notes.azmuth.dev
+    service: http://127.0.0.1:7400
+
+  # Apps hosted on a VPS: give them their own DNS record instead of a rule here,
+  # or proxy through a private link if you would rather not expose the VPS.
+
+  - service: http_status:404
