@@ -1,0 +1,89 @@
+# Reusable deployment for a static app at <name>.azmuth.dev.
+#
+# Copy this into your org-level workflow repo (azmuth/.github) as
+# .github/workflows/deploy-static.yml, then a project only needs:
+#
+#   name: deploy
+#   on: { push: { branches: [main] } }
+#   jobs:
+#     ship:
+#       uses: azmuth/.github/.github/workflows/deploy-static.yml@main
+#       with:
+#         project: hld
+#         domain: hld.azmuth.dev
+#       secrets: inherit
+name: deploy-static
+
+on:
+  workflow_call:
+    inputs:
+      project:
+        description: Worker name, also the repo suffix (e.g. hld)
+        required: true
+        type: string
+      domain:
+        description: Hostname to attach, e.g. hld.azmuth.dev
+        required: true
+        type: string
+      directory:
+        description: Build output directory
+        required: false
+        default: dist
+        type: string
+      build_command:
+        description: Command that produces the output directory
+        required: false
+        default: pnpm build
+        type: string
+      node_version:
+        required: false
+        default: "22"
+        type: string
+    secrets:
+      CLOUDFLARE_API_TOKEN:
+        required: true
+      CLOUDFLARE_ACCOUNT_ID:
+        required: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node_version }}
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: ${{ inputs.build_command }}
+
+      # The domain lives in config, so adding a project never means clicking
+      # through the dashboard.
+      - name: Write wrangler config
+        run: |
+          cat > wrangler.jsonc <<JSONC
+          {
+            "name": "${{ inputs.project }}",
+            "compatibility_date": "2026-10-26",
+            "assets": {
+              "directory": "./${{ inputs.directory }}",
+              "not_found_handling": "single-page-application"
+            },
+            "routes": [
+              { "pattern": "${{ inputs.domain }}", "custom_domain": true }
+            ]
+          }
+          JSONC
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

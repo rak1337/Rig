@@ -166,8 +166,10 @@ Point `azmuth.dev` at the tunnel. Binding to loopback and letting the tunnel
 forward is safer than `--host 0.0.0.0`, because then nothing on the local
 network can reach the port directly.
 
-Hosting several apps under one domain (subdomain per app, Access policies,
-routing) is written up in [deploy/README.md](deploy/README.md).
+Hosting several apps under one domain, including why Rig is the one app that
+cannot be a Cloudflare Worker, is written up in
+[deploy/README.md](deploy/README.md), with reusable workflows in
+[deploy/workflows](deploy/workflows).
 
 Two things to be clear about before it is public:
 

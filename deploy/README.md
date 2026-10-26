@@ -1,83 +1,92 @@
-# Hosting several apps under azmuth.dev
+# The azmuth.dev setup
 
-One rule drives every decision: **an app that touches hardware has to run on the
-machine the hardware is attached to.** Rig controls a keyboard over USB, so it
-runs on the Mac. Everything else can live on a VPS or wherever you like.
+One subdomain per project, free, with its own deployment and release cycle. The
+plan works for every app that is *just software* — and Rig is the one that is
+not.
 
-## Use a subdomain per app
+## Two kinds of app
 
-```
-azmuth.dev            landing page (static)
-rig.azmuth.dev        → tunnel → this Mac, 127.0.0.1:7311
-notes.azmuth.dev      → tunnel → this Mac, 127.0.0.1:7400
-static-thing.azmuth.dev → A record → your VPS
-```
+| Project | What it needs | Where it runs | How it is reached |
+| --- | --- | --- | --- |
+| `azmuth.dev` | nothing | Workers static assets | Cloudflare edge |
+| `dimension.azmuth.dev` | nothing | Workers static assets | Cloudflare edge |
+| `hld.azmuth.dev` | nothing | Workers static assets | Cloudflare edge |
+| `rig.azmuth.dev` | **USB keyboard** | **your Mac** | Cloudflare Tunnel |
 
-Subdomains rather than paths (`azmuth.dev/rig`) for three reasons:
+## Why Rig cannot be a Worker
 
-1. **Rig assumes it owns the root.** Its assets are `/app.css`, `/app.js` and its
-   API is `/api/*`. Serving it under a prefix would need base-path support in the
-   HTML, the CSS and every fetch — doable, but it buys nothing here.
-2. **Origins stay separate.** Cookies, `localStorage` and any session are scoped
-   per host, so one app cannot read another's state. With paths they share an
-   origin and everything collides.
-3. **Access policies are per hostname.** You can put `rig.azmuth.dev` behind a
-   stricter rule than the public landing page.
+A Worker runs on Cloudflare's machines with no USB bus, no IOKit, no HID
+permissions and no persistent process. Rig is not a web page that talks to a
+service — it *is* the service: it opens the keyboard, renders 132-cell frames at
+30 fps and writes them over USB. Deploying `dist/` for Rig would publish a UI
+whose every request fails, because there is no backend anywhere near a keyboard.
 
-## Put Cloudflare in front
+So `rig.azmuth.dev` is a tunnel to the Mac, and that is the only exception. If
+you want Rig's UI to be publicly viewable without hardware, that is a separate
+demo build with the API stubbed out — not a deployment of the real thing.
 
-```
-DNS (Cloudflare)  →  Tunnel  →  cloudflared on the Mac  →  127.0.0.1:7311
-                              →  cloudflared on the VPS  →  127.0.0.1:7400
-```
+## Adding a static app
 
-- Run `cloudflared` as a service on each machine (`brew services start cloudflared`).
-- Add a rule per app in `cloudflared.example.yml`, then
-  `cloudflared tunnel route dns <tunnel> rig.azmuth.dev` to create the CNAME.
-- Keep every app bound to `127.0.0.1`; the tunnel is the only way in, so the
-  ports are not exposed to your LAN.
-- Cloudflare terminates TLS at the edge, so the origin needs no certificate.
+The domain lives in config, so a new project means a name and a hostname.
 
-## Authentication: do it at the edge
+1. `deploy/workflows/deploy-static.yml` in your org workflow repo
+   (`azmuth/.github`).
+2. In the project, a three-line caller:
 
-Rig's own token is a single shared secret with no accounts. If Cloudflare Access
-sits in front of `rig.azmuth.dev`, the browser is already authenticated before it
-reaches the app, and the token becomes a second, redundant gate — you can drop it
-(`RIG_TOKEN` unset, bind loopback) and let Access do the work:
-
-- Access → Applications → Self-hosted → `rig.azmuth.dev`
-- Policy: allow your email, one-time PIN or Google/GitHub identity
-- Session duration: a day or two
-
-For the public landing page, either no Access policy or a bypass policy.
-
-## Isolation worth knowing about
-
-Rig's page runs on the same origin as its API. Anything loaded into that origin —
-a third-party script, an injected ad, a compromised dependency — can call the
-API with the user's cookie and drive the keyboard. Access limits *who* gets in;
-it does not limit what runs in the page. That is the argument for keeping the
-control surface free of third-party scripts, and for keeping the analytics tag
-on the landing page rather than on `rig.` (the tag in this repo is skipped on
-localhost but does load on any other host — worth overriding if you publish Rig
-itself).
-
-## Adding the next app
-
-1. Run it on the machine that has what it needs, bound to loopback.
-2. Add an ingress rule for `<app>.azmuth.dev`.
-3. `cloudflared tunnel route dns <tunnel> <app>.azmuth.dev`.
-4. Restart `cloudflared` and add an Access policy if it is not public.
-
-## If you would rather not use Cloudflare
-
-Caddy on a VPS gets you the same shape with automatic certificates:
-
-```
-rig.azmuth.dev {
-    reverse_proxy 100.x.y.z:7311   # the Mac over Tailscale
-}
+```yaml
+name: deploy
+on: { push: { branches: [main] } }
+jobs:
+  ship:
+    uses: azmuth/.github/.github/workflows/deploy-static.yml@main
+    with:
+      project: hld
+      domain: hld.azmuth.dev
+    secrets: inherit
 ```
 
-The Mac's port stays bound to loopback and Tailscale provides the private link.
-This costs one more moving part (Tailscale) but removes the tunnel dependency.
+3. Done. The workflow writes the `wrangler.jsonc` with the custom domain and
+   deploys; Cloudflare creates the DNS record and certificate.
+
+Keep hostnames at the first level (`hld.azmuth.dev`, not `beta.hld.azmuth.dev`):
+free Universal SSL covers the root and first-level subdomains only.
+
+## Adding Rig
+
+```sh
+# on the Mac, bound to loopback
+RIG_TOKEN=$(openssl rand -hex 16) ./rig --no-open
+
+# on the Mac, exposing only that port
+cloudflared tunnel --url http://127.0.0.1:7311
+```
+
+Then point `rig.azmuth.dev` at the tunnel (`cloudflared tunnel route dns`), and
+put Cloudflare Access in front of it. With Access authenticating the browser,
+`RIG_TOKEN` becomes redundant — drop it and let Access be the gate.
+
+Releases for Rig are a tag away: `deploy/workflows/rig-release.yml` builds and
+attaches a macOS binary on `v*`.
+
+## The registry
+
+The landing page reads a static manifest — no database, no build step:
+
+```js
+export const projects = [
+  { name: "One More Dimension", slug: "dimension", domain: "dimension.azmuth.dev", category: "Mathematics", status: "live" },
+  { name: "Rig",                slug: "rig",       domain: "rig.azmuth.dev",       category: "Developer Tools", status: "live" },
+  { name: "Azmuth HLD",         slug: "hld",       domain: "hld.azmuth.dev",       category: "System Design", status: "live" },
+];
+```
+
+Adding a project to the workbench is adding one object. The `status` field is
+worth having from day one: it lets you publish a project before it is finished
+without pretending otherwise.
+
+## Analytics
+
+One GA4 property can collect every subdomain — the same `G-` tag with the
+hostname as a dimension. Keep it off `rig.`: that page shares an origin with an
+API that drives hardware, so any script loaded there can call it. Put the tag on
+the landing page and the static apps instead.
