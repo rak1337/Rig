@@ -100,9 +100,11 @@ layout it is told to draw; unknown boards get a generic ANSI TKL rather than a
 wrong specific one, with painting disabled. `--pid 0x0203` points the app at
 another board in the table.
 
-Keycaps render as backlit caps: dark plastic, legends that light up, a rim of
-light escaping each cap edge, and a backlight pool under the cap. Matching the
-Razer look is why the logo plate sits on the front edge.
+The drawing follows the hardware: a matte case with a raised deck and a front lip,
+sharp-cornered caps with wells between them, legends aligned to the top-left of
+each cap the way Razer prints them, shifted symbols stacked under the number row,
+light bleeding from under each cap and lighting the legends, and the emblem
+centred on the lip.
 
 ## What the board actually holds
 

@@ -258,16 +258,26 @@ button { font-family: inherit; }
 
 /* keycaps */
 
-.plate {
-  fill: #0d0d0d;
-  stroke: rgba(255, 255, 255, 0.05);
+.case {
+  fill: url(#caseGrad);
+  stroke: rgba(255, 255, 255, 0.07);
+  stroke-width: 1;
+}
+
+.deck {
+  fill: #0e1112;
+  stroke: rgba(255, 255, 255, 0.045);
   stroke-width: 1;
   transition: fill 400ms var(--ease-out);
 }
 
-.key .shadow { fill: #000; opacity: 0.55; }
+.key .well { fill: #050708; }
 
-.key .cap { stroke: rgba(255, 255, 255, 0.055); stroke-width: 0.75; }
+.key .cap {
+  fill: url(#capGrad);
+  stroke: rgba(255, 255, 255, 0.06);
+  stroke-width: 0.8;
+}
 
 .key .under {
   fill: var(--light);
@@ -276,40 +286,36 @@ button { font-family: inherit; }
 
 .key .edge {
   fill: none;
-  stroke-width: 1.2;
+  stroke-width: 1.1;
   transition: opacity 150ms var(--ease-out), stroke 150ms var(--ease-out);
 }
 
-.logo text {
-  font-family: "Archivo", system-ui, sans-serif;
-  font-weight: 700;
-  font-variation-settings: "wdth" 66;
-  font-size: 15px;
-  letter-spacing: 0.44em;
-  text-anchor: middle;
+.emblem path {
   fill: var(--light);
-  opacity: 0.9;
-}
-
-.logo-glow {
-  fill: var(--light);
-  opacity: 0.14;
-  filter: blur(9px);
+  opacity: 0.92;
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--light) 65%, transparent));
 }
 
 .key .legend {
-  fill: rgba(232, 232, 232, 0.42);
+  fill: rgba(233, 240, 236, 0.6);
   font-family: "Archivo", system-ui, sans-serif;
-  font-variation-settings: "wdth" 90;
-  font-size: 11px;
-  font-weight: 500;
-  text-anchor: middle;
-  dominant-baseline: central;
+  font-variation-settings: "wdth" 88;
+  font-size: 10.5px;
+  font-weight: 620;
+  letter-spacing: 0.02em;
+  text-anchor: start;
   pointer-events: none;
   transition: fill 170ms var(--ease-out);
 }
 
-.key.lit .legend { fill: rgba(255, 255, 255, 0.94); }
+.key .legend.shift {
+  font-size: 8.5px;
+  font-weight: 500;
+  opacity: 0.6;
+}
+
+.key.lit .legend { fill: rgba(255, 255, 255, 0.95); }
+.key.lit .legend.shift { opacity: 0.85; }
 .hero.editing .key:hover .cap { fill: #2b2b2b; }
 
 /* ------------------------------------------------------------------- cards */

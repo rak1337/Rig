@@ -5,7 +5,7 @@ const U = 44;
 const GAP = 6;
 const STEP = U + GAP;
 
-const k = (code, label, w = 1) => ({ code, label, w });
+const k = (code, label, w = 1, shift = null) => ({ code, label, w, shift });
 const gap = (w) => ({ gap: w });
 
 const ROWS = [
@@ -14,10 +14,11 @@ const ROWS = [
     k("F5", "F5"), k("F6", "F6"), k("F7", "F7"), k("F8", "F8"), gap(0.5),
     k("F9", "F9"), k("F10", "F10"), k("F11", "F11"), k("F12", "F12"), gap(0.5),
     k("PrintScreen", "PrtSc"), k("ScrollLock", "ScrLk"), k("Pause", "Pause")] },
-  { keys: [k("Backquote", "`"), k("Digit1", "1"), k("Digit2", "2"), k("Digit3", "3"),
-    k("Digit4", "4"), k("Digit5", "5"), k("Digit6", "6"), k("Digit7", "7"),
-    k("Digit8", "8"), k("Digit9", "9"), k("Digit0", "0"), k("Minus", "-"),
-    k("Equal", "="), k("Backspace", "Backspace", 2)] },
+  { keys: [k("Backquote", "`", 1, "~"), k("Digit1", "1", 1, "!"), k("Digit2", "2", 1, "@"),
+    k("Digit3", "3", 1, "#"), k("Digit4", "4", 1, "$"), k("Digit5", "5", 1, "%"),
+    k("Digit6", "6", 1, "^"), k("Digit7", "7", 1, "&"), k("Digit8", "8", 1, "*"),
+    k("Digit9", "9", 1, "("), k("Digit0", "0", 1, ")"), k("Minus", "-", 1, "_"),
+    k("Equal", "=", 1, "+"), k("Backspace", "Backspace", 2)] },
   { keys: [k("Tab", "Tab", 1.5), k("KeyQ", "Q"), k("KeyW", "W"), k("KeyE", "E"),
     k("KeyR", "R"), k("KeyT", "T"), k("KeyY", "Y"), k("KeyU", "U"), k("KeyI", "I"),
     k("KeyO", "O"), k("KeyP", "P"), k("BracketLeft", "["), k("BracketRight", "]"),
@@ -396,8 +397,10 @@ function commitPicker() {
 
 /* ---------------------------------------------------------------- keyboard */
 
-const LOGO_BAND = 64;
+const CASE = { pad: 26, top: 18, lip: 46 };
 const LAYOUTS = { tkl: ROWS, generic: ROWS };
+const BOARD_W = 18.5 * STEP - GAP;
+const BOARD_H = 5 * STEP + U;
 
 function buildBoard(svg, device) {
   const ns = "http://www.w3.org/2000/svg";
@@ -405,75 +408,113 @@ function buildBoard(svg, device) {
   const keys = [];
   const rows = LAYOUTS[device?.layout] || LAYOUTS.generic;
   const perKey = device?.per_key !== false;
-  const band = device?.logo === false ? 0 : LOGO_BAND;
+  const lip = device?.logo === false ? 14 : CASE.lip;
 
-  const plate = document.createElementNS(ns, "rect");
-  plate.setAttribute("class", "plate");
-  plate.setAttribute("x", -14);
-  plate.setAttribute("y", -14);
-  plate.setAttribute("width", 18.5 * STEP - GAP + 28);
-  plate.setAttribute("height", 5 * STEP + U + 28 + band);
-  plate.setAttribute("rx", 14);
-  frag.append(plate);
+  const width = BOARD_W + CASE.pad * 2;
+  const height = BOARD_H + CASE.top + lip;
 
-  const draw = (code, label, x, y, width) => {
+  const defs = document.createElementNS(ns, "defs");
+  defs.innerHTML = `
+    <linearGradient id="capGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#33383b"/>
+      <stop offset="0.5" stop-color="#222729"/>
+      <stop offset="1" stop-color="#141719"/>
+    </linearGradient>
+    <linearGradient id="caseGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1a1d1f"/>
+      <stop offset="1" stop-color="#0a0c0d"/>
+    </linearGradient>`;
+  frag.append(defs);
+
+  // The case: matte shell with a raised deck and a front lip.
+  const shell = document.createElementNS(ns, "rect");
+  shell.setAttribute("class", "case");
+  shell.setAttribute("x", 0);
+  shell.setAttribute("y", 0);
+  shell.setAttribute("width", width);
+  shell.setAttribute("height", height);
+  shell.setAttribute("rx", 18);
+  frag.append(shell);
+
+  const deck = document.createElementNS(ns, "rect");
+  deck.setAttribute("class", "deck");
+  deck.setAttribute("x", CASE.pad - 11);
+  deck.setAttribute("y", CASE.top - 11);
+  deck.setAttribute("width", BOARD_W + 22);
+  deck.setAttribute("height", BOARD_H + 22);
+  deck.setAttribute("rx", 10);
+  frag.append(deck);
+
+  const keyLayer = document.createElementNS(ns, "g");
+  keyLayer.setAttribute("transform", `translate(${CASE.pad} ${CASE.top})`);
+
+  const draw = (code, label, x, y, w, shift) => {
     const group = document.createElementNS(ns, "g");
     group.setAttribute("class", "key");
     group.dataset.code = code;
     const cell = perKey ? KEY_CELLS[code] : null;
     if (cell) group.dataset.cell = cell.join(",");
 
-    const shadow = document.createElementNS(ns, "rect");
-    shadow.setAttribute("class", "shadow");
-    shadow.setAttribute("x", x);
-    shadow.setAttribute("y", y + 3);
-    shadow.setAttribute("width", width);
-    shadow.setAttribute("height", U);
-    shadow.setAttribute("rx", 7);
+    const well = document.createElementNS(ns, "rect");
+    well.setAttribute("class", "well");
+    well.setAttribute("x", x);
+    well.setAttribute("y", y);
+    well.setAttribute("width", w);
+    well.setAttribute("height", U);
+    well.setAttribute("rx", 6);
 
     const under = document.createElementNS(ns, "rect");
     under.setAttribute("class", "under");
-    under.setAttribute("x", x + 1.5);
-    under.setAttribute("y", y + U - 7);
-    under.setAttribute("width", width - 3);
-    under.setAttribute("height", 5);
-    under.setAttribute("rx", 2.5);
+    under.setAttribute("x", x + 2.4);
+    under.setAttribute("y", y + U - 6.2);
+    under.setAttribute("width", w - 4.8);
+    under.setAttribute("height", 4.2);
+    under.setAttribute("rx", 2);
     under.style.opacity = "0";
 
     const cap = document.createElementNS(ns, "rect");
     cap.setAttribute("class", "cap");
-    cap.setAttribute("x", x);
-    cap.setAttribute("y", y);
-    cap.setAttribute("width", width);
-    cap.setAttribute("height", U);
-    cap.setAttribute("rx", 7);
+    cap.setAttribute("x", x + 1);
+    cap.setAttribute("y", y + 1);
+    cap.setAttribute("width", w - 2);
+    cap.setAttribute("height", U - 2);
+    cap.setAttribute("rx", 5);
     cap.setAttribute("fill", "url(#capGrad)");
 
-    // Light escaping around the cap: the tell of a backlit key.
     const edge = document.createElementNS(ns, "rect");
     edge.setAttribute("class", "edge");
-    edge.setAttribute("x", x + 0.6);
-    edge.setAttribute("y", y + 0.6);
-    edge.setAttribute("width", width - 1.2);
-    edge.setAttribute("height", U - 1.2);
-    edge.setAttribute("rx", 6.5);
+    edge.setAttribute("x", x + 1.8);
+    edge.setAttribute("y", y + 1.8);
+    edge.setAttribute("width", w - 3.6);
+    edge.setAttribute("height", U - 3.6);
+    edge.setAttribute("rx", 4.4);
     edge.style.opacity = "0";
 
-    group.append(shadow, under, cap, edge);
+    group.append(well, cap, under, edge);
 
+    // Razer legends sit top-left on the cap.
     if (label) {
-      const text = document.createElementNS(ns, "text");
-      text.setAttribute("class", "legend");
-      text.setAttribute("x", x + width / 2);
-      text.setAttribute("y", y + U / 2 + 0.5);
-      text.textContent = label;
-      group.append(text);
-      keys.push({ code, cap, under, edge, legend: text, group, x, width });
+      const main = document.createElementNS(ns, "text");
+      main.setAttribute("class", "legend");
+      main.setAttribute("x", x + 6.5);
+      main.setAttribute("y", y + 13);
+      main.textContent = label;
+      group.append(main);
+      keys.push({ code, cap, under, edge, legend: main, group, x, width: w });
     } else {
-      keys.push({ code, cap, under, edge, legend: null, group, x, width });
+      keys.push({ code, cap, under, edge, legend: null, group, x, width: w });
     }
 
-    frag.append(group);
+    if (shift) {
+      const secondary = document.createElementNS(ns, "text");
+      secondary.setAttribute("class", "legend shift");
+      secondary.setAttribute("x", x + 6.5);
+      secondary.setAttribute("y", y + 26);
+      secondary.textContent = shift;
+      group.append(secondary);
+    }
+
+    keyLayer.append(group);
   };
 
   rows.forEach((row, index) => {
@@ -483,42 +524,35 @@ function buildBoard(svg, device) {
         cursor += item.gap;
         continue;
       }
-      draw(item.code, item.label, cursor * STEP, index * STEP, item.w * U + (item.w - 1) * GAP);
+      draw(item.code, item.label, cursor * STEP, index * STEP,
+        item.w * U + (item.w - 1) * GAP, item.shift);
       cursor += item.w;
     }
   });
 
   for (const nav of NAV) draw(nav.code, nav.label, nav.c * STEP, nav.r * STEP, U);
 
-  if (band) {
-    const logo = document.createElementNS(ns, "g");
-    logo.setAttribute("class", "logo");
+  frag.append(keyLayer);
 
-    const wordmark = document.createElementNS(ns, "text");
-    wordmark.setAttribute("x", (18.5 * STEP - GAP) / 2);
-    wordmark.setAttribute("y", 5 * STEP + U + 34);
-    wordmark.textContent = "RAZER";
-    logo.append(wordmark);
+  if (device?.logo !== false) {
+    const emblem = document.createElementNS(ns, "g");
+    emblem.setAttribute("class", "emblem");
+    emblem.setAttribute("transform",
+      `translate(${width / 2} ${CASE.top + BOARD_H + lip / 2})`);
 
-    const glow = document.createElementNS(ns, "rect");
-    glow.setAttribute("class", "logo-glow");
-    glow.setAttribute("x", (18.5 * STEP - GAP) / 2 - 70);
-    glow.setAttribute("y", 5 * STEP + U + 14);
-    glow.setAttribute("width", 140);
-    glow.setAttribute("height", 26);
-    glow.setAttribute("rx", 13);
-    logo.append(glow); /* behind the text once painted */
-
-    logo.insertBefore(glow, wordmark);
-    frag.append(logo);
+    // Three snake heads around a centre — a triskelion, not the trademark itself.
+    for (let arm = 0; arm < 3; arm++) {
+      const path = document.createElementNS(ns, "path");
+      path.setAttribute("d", "M0 0 C 1.4 -5.4 6 -7.6 9.2 -4.6 C 11.4 -2.4 11.2 1.2 8.6 2.4 C 10 3.6 10.2 6 8.4 7 L 6.2 4.8 C 7.6 3.6 6.8 1.6 5.2 1.6 C 2.4 1.6 0.6 1 0 0 Z");
+      path.setAttribute("transform", `rotate(${arm * 120}) scale(0.82)`);
+      emblem.append(path);
+    }
+    frag.append(emblem);
   }
 
   svg.replaceChildren(frag);
-  svg.setAttribute(
-    "viewBox",
-    `0 0 ${18.5 * STEP - GAP + 4} ${5 * STEP + U + 12 + band}`,
-  );
-  return { keys, plate };
+  svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+  return { keys, plate: deck };
 }
 
 /// Lighting preview: the caps stay black, the light shows as a strip bleeding
