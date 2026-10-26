@@ -1,3 +1,11 @@
+// Surface a rendering failure in the page instead of leaving a blank panel.
+window.addEventListener("error", (event) => {
+  const banner = document.getElementById("alert");
+  if (!banner) return;
+  banner.hidden = false;
+  banner.textContent = `Interface error: ${event.message}`;
+});
+
 /* Rig — console for the BlackWidow TE Chroma.
    The Rust service owns the USB protocol; this file is state, rendering, and HTTP. */
 
@@ -417,19 +425,6 @@ function buildBoard(svg, device) {
   const width = BOARD_W + CASE.pad * 2;
   const height = BOARD_H + CASE.top + lip;
 
-  const defs = document.createElementNS(ns, "defs");
-  defs.innerHTML = `
-    <linearGradient id="capGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#33383b"/>
-      <stop offset="0.5" stop-color="#222729"/>
-      <stop offset="1" stop-color="#141719"/>
-    </linearGradient>
-    <linearGradient id="caseGrad" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#1a1d1f"/>
-      <stop offset="1" stop-color="#0a0c0d"/>
-    </linearGradient>`;
-  frag.append(defs);
-
   // The case: matte shell with a raised deck and a front lip.
   const shell = document.createElementNS(ns, "rect");
   shell.setAttribute("class", "case");
@@ -474,7 +469,7 @@ function buildBoard(svg, device) {
     cap.setAttribute("width", w - 2);
     cap.setAttribute("height", U - 2);
     cap.setAttribute("rx", 5);
-    cap.setAttribute("fill", "url(#capGrad)");
+    cap.setAttribute("fill", "#262b2e");
 
     // Light passing through the cap itself.
     const tint = document.createElementNS(ns, "rect");

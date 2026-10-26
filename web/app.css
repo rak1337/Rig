@@ -227,7 +227,7 @@ button { font-family: inherit; }
 }
 
 .hero svg {
-  filter: drop-shadow(0 34px 34px rgba(0, 0, 0, 0.7));
+  filter: drop-shadow(0 26px 30px rgba(0, 0, 0, 0.55));
 }
 
 .ambient {
@@ -268,23 +268,23 @@ button { font-family: inherit; }
 /* keycaps */
 
 .case {
-  fill: url(#caseGrad);
-  stroke: rgba(255, 255, 255, 0.07);
+  fill: #1d2124;
+  stroke: rgba(255, 255, 255, 0.1);
   stroke-width: 1;
 }
 
 .deck {
-  fill: #0e1112;
+  fill: #0b0e0f;
   stroke: rgba(255, 255, 255, 0.045);
   stroke-width: 1;
   transition: fill 400ms var(--ease-out);
 }
 
-.key .well { fill: #050708; }
+.key .well { fill: #080b0c; }
 
 .key .cap {
-  fill: url(#capGrad);
-  stroke: rgba(255, 255, 255, 0.06);
+  fill: #262b2e;
+  stroke: rgba(255, 255, 255, 0.07);
   stroke-width: 0.8;
 }
 
