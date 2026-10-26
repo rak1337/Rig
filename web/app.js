@@ -98,6 +98,51 @@ const EFFECTS = [
   { id: "off", name: "Off", note: "backlight dark" },
 ];
 
+/* macOS virtual keycodes, indexed by KeyboardEvent.code. */
+const KEYCODES = {
+  KeyA: 0, KeyS: 1, KeyD: 2, KeyF: 3, KeyH: 4, KeyG: 5, KeyZ: 6, KeyX: 7, KeyC: 8, KeyV: 9,
+  KeyB: 11, KeyQ: 12, KeyW: 13, KeyE: 14, KeyR: 15, KeyY: 16, KeyT: 17,
+  Digit1: 18, Digit2: 19, Digit3: 20, Digit4: 21, Digit6: 22, Digit5: 23,
+  Equal: 24, Digit9: 25, Digit7: 26, Minus: 27, Digit8: 28, Digit0: 29,
+  BracketRight: 30, KeyO: 31, KeyU: 32, BracketLeft: 33, KeyI: 34, KeyP: 35,
+  Enter: 36, KeyL: 37, KeyJ: 38, Quote: 39, KeyK: 40, Semicolon: 41,
+  Backslash: 42, Comma: 43, Slash: 44, KeyN: 45, KeyM: 46, Period: 47,
+  Tab: 48, Space: 49, Backquote: 50, Backspace: 51, Escape: 53,
+  MetaRight: 54, MetaLeft: 55, ShiftLeft: 56, CapsLock: 57, AltLeft: 58,
+  ControlLeft: 59, ShiftRight: 60, AltRight: 61, ControlRight: 62,
+  F1: 122, F2: 120, F3: 99, F4: 118, F5: 96, F6: 97, F7: 98, F8: 100,
+  F9: 101, F10: 109, F11: 103, F12: 111, Home: 115, PageUp: 116, Delete: 117,
+  End: 119, PageDown: 121, ArrowLeft: 123, ArrowRight: 124, ArrowDown: 125,
+  ArrowUp: 126,
+};
+
+const CODE_BY_KEY = Object.fromEntries(
+  Object.entries(KEYCODES).map(([code, key]) => [key, code]),
+);
+
+function keyLabel(keycode) {
+  const code = CODE_BY_KEY[keycode];
+  if (!code) return `key ${keycode}`;
+  if (code.startsWith("Key")) return code.slice(3);
+  if (code.startsWith("Digit")) return code.slice(5);
+  return code
+    .replace("Arrow", "")
+    .replace("Left", " left")
+    .replace("Right", " right")
+    .replace("Backspace", "delete")
+    .replace("Backquote", "`")
+    .replace("Semicolon", ";")
+    .replace("Quote", "'")
+    .replace("Comma", ",")
+    .replace("Period", ".")
+    .replace("Slash", "/")
+    .replace("BracketLeft", "[")
+    .replace("BracketRight", "]")
+    .replace("Backslash", "\\")
+    .replace("Minus", "-")
+    .replace("Equal", "=");
+}
+
 const CAP_BASE = [27, 31, 33];
 const SOFTWARE = new Set(["fire", "starlight", "ripple", "gradient", "marquee", "comet"]);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -140,6 +185,16 @@ const dom = {
   studioHex: document.getElementById("studio-hex"),
   studioClear: document.getElementById("studio-clear"),
   studioApply: document.getElementById("studio-apply"),
+  keysAlert: document.getElementById("keys-alert"),
+  remapAdd: document.getElementById("remap-add"),
+  remapHint: document.getElementById("remap-hint"),
+  remaps: document.getElementById("remaps"),
+  remapsEmpty: document.getElementById("remaps-empty"),
+  macroName: document.getElementById("macro-name"),
+  recordToggle: document.getElementById("record-toggle"),
+  recordStatus: document.getElementById("record-status"),
+  macros: document.getElementById("macros"),
+  macrosEmpty: document.getElementById("macros-empty"),
 };
 
 let state = {
@@ -163,6 +218,10 @@ let applyTimer = null;
 let flashes = new Map();
 let frameTimer = null;
 let frameColors = [];
+let keysTimer = null;
+let keysData = { trusted: false, recording: false, steps: 0, remaps: [], macros: [] };
+let capture = null;
+let pendingFrom = null;
 
 /* ------------------------------------------------------------------ colors */
 
@@ -637,6 +696,7 @@ function showView(name) {
   currentView = name;
   invalidate();
   syncPolling();
+  syncKeysPolling();
 }
 
 /* ---------------------------------------------------------------- controls */
@@ -885,6 +945,102 @@ function bind() {
     invalidate();
   });
 
+  dom.remapAdd.addEventListener("click", () => {
+    if (capture) {
+      cancelCapture();
+      return;
+    }
+    capture = "from";
+    pendingFrom = null;
+    dom.remapAdd.textContent = "Cancel";
+    dom.remapHint.textContent = "Press the key you want to change…";
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (!capture) return;
+    if (event.key === "Escape") {
+      cancelCapture();
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    const keycode = KEYCODES[event.code];
+    if (keycode === undefined) {
+      dom.remapHint.textContent = "That key has no mapping yet — try another.";
+      return;
+    }
+    if (capture === "from") {
+      pendingFrom = keycode;
+      capture = "to";
+      dom.remapHint.textContent =
+        `Now press what ${keyLabel(keycode)} should act as.`;
+      return;
+    }
+    request("/api/keys/remap", {
+      method: "POST",
+      body: JSON.stringify({ from: pendingFrom, to: keycode }),
+    }).then((data) => {
+      keysData = data;
+      renderKeys();
+      cancelCapture();
+    });
+  }, true);
+
+  dom.recordToggle.addEventListener("click", () => {
+    if (keysData.recording) {
+      request("/api/keys/record/stop", {
+        method: "POST",
+        body: JSON.stringify({ name: dom.macroName.value.trim() }),
+      }).then((data) => {
+        if (data.error) dom.recordStatus.textContent = data.error;
+        else dom.macroName.value = "";
+        return request("/api/keys");
+      }).then((data) => {
+        keysData = data;
+        renderKeys();
+      });
+    } else {
+      request("/api/keys/record/start", { method: "POST" }).then((data) => {
+        keysData = data;
+        renderKeys();
+      });
+    }
+  });
+
+  dom.remaps.addEventListener("click", (event) => {
+    const button = event.target.closest("[data-remove]");
+    if (!button) return;
+    request("/api/keys/remap/delete", {
+      method: "POST",
+      body: JSON.stringify({ from: Number(button.dataset.remove), to: 0 }),
+    }).then((data) => {
+      keysData = data;
+      renderKeys();
+    });
+  });
+
+  dom.macros.addEventListener("click", (event) => {
+    const play = event.target.closest("[data-play]");
+    const remove = event.target.closest("[data-delete]");
+    if (play) {
+      request("/api/keys/macro/play", {
+        method: "POST",
+        body: JSON.stringify({ id: Number(play.dataset.play) }),
+      }).then((data) => {
+        keysData = data;
+        renderKeys();
+      });
+    } else if (remove) {
+      request("/api/keys/macro/delete", {
+        method: "POST",
+        body: JSON.stringify({ id: Number(remove.dataset.delete) }),
+      }).then((data) => {
+        keysData = data;
+        renderKeys();
+      });
+    }
+  });
+
   dom.presetList.addEventListener("click", (event) => {
     const card = event.target.closest(".preset-card");
     if (!card) return;
@@ -954,6 +1110,88 @@ function buildPalette() {
   dom.palette.replaceChildren(frag);
 }
 
+/* --------------------------------------------------------------------- keys */
+
+function cancelCapture() {
+  capture = null;
+  pendingFrom = null;
+  dom.remapAdd.textContent = "Add a remap";
+  dom.remapHint.textContent =
+    "Press the key you want to change, then press what it should act as.";
+}
+
+function syncKeysPolling() {
+  const wanted = currentView === "keys" && !document.hidden;
+  if (wanted && keysTimer === null) {
+    fetchKeys();
+    keysTimer = setInterval(fetchKeys, 800);
+  } else if (!wanted && keysTimer !== null) {
+    clearInterval(keysTimer);
+    keysTimer = null;
+  }
+}
+
+async function fetchKeys() {
+  try {
+    keysData = await request("/api/keys");
+    renderKeys();
+  } catch {
+    /* service restarting */
+  }
+}
+
+function renderKeys() {
+  dom.keysAlert.hidden = keysData.trusted;
+  if (!keysData.trusted) {
+    dom.keysAlert.innerHTML =
+      "<strong>Accessibility permission is needed.</strong> Remaps and macros only "
+      + "work once this app may control the computer: System Settings → Privacy & "
+      + "Security → Accessibility.";
+  }
+
+  const remaps = document.createDocumentFragment();
+  for (const [from, to] of keysData.remaps) {
+    const row = document.createElement("div");
+    row.className = "row-item";
+    row.innerHTML = `
+      <span class="row-main">
+        <span class="keycap">${keyLabel(from)}</span>
+        <span class="row-arrow">→</span>
+        <span class="keycap">${keyLabel(to)}</span>
+      </span>
+      <button class="icon-button" data-remove="${from}" aria-label="Remove remap">×</button>`;
+    remaps.append(row);
+  }
+  dom.remaps.replaceChildren(remaps);
+  dom.remapsEmpty.hidden = keysData.remaps.length > 0;
+
+  const macros = document.createDocumentFragment();
+  for (const macro of keysData.macros) {
+    const row = document.createElement("div");
+    row.className = "row-item";
+    row.innerHTML = `
+      <span class="row-main">
+        <span class="row-name">${escapeHtml(macro.name)}</span>
+        <span class="row-meta">${macro.steps.length} events</span>
+      </span>
+      <span class="row-main">
+        <button class="ghost" data-play="${macro.id}">Play</button>
+        <button class="icon-button" data-delete="${macro.id}" aria-label="Delete macro">×</button>
+      </span>`;
+    macros.append(row);
+  }
+  dom.macros.replaceChildren(macros);
+  dom.macrosEmpty.hidden = keysData.macros.length > 0;
+
+  dom.recordToggle.textContent = keysData.recording ? "Stop" : "Record";
+  dom.recordToggle.classList.toggle("recording", keysData.recording);
+  dom.recordStatus.hidden = !keysData.recording;
+  if (keysData.recording) {
+    dom.recordStatus.textContent =
+      `Recording — ${keysData.steps} key events captured so far.`;
+  }
+}
+
 /* -------------------------------------------------------------------- boot */
 
 async function boot() {
@@ -985,6 +1223,7 @@ async function boot() {
 document.addEventListener("visibilitychange", () => {
   invalidate();
   syncPolling();
+  syncKeysPolling();
 });
 
 boot();

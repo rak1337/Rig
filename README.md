@@ -49,6 +49,19 @@ rig --test                # round-trip a report to the keyboard and exit
 
 State and presets live in `~/Library/Application Support/Rig/state.json`.
 
+## Remapping and macros
+
+The **Keys** tab remaps keys and records macros system-wide through a
+`CGEventTap`, so both work in every app, not just in this window.
+
+- **Remap** — press the key to change, then press what it should act as. Stored in
+  `state.json`, applied at launch.
+- **Macro** — Record captures key down/up with timings until you stop; Play replays
+  them. Playback events are tagged so the tap does not remap its own output.
+
+Both need **Accessibility** permission (System Settings → Privacy & Security →
+Accessibility). Without it the tap is never created and the tab says so.
+
 ## What the board actually holds
 
 ```sh

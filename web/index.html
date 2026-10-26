@@ -36,6 +36,7 @@
   <button class="tab" role="tab" data-tab="lighting" aria-selected="true">Lighting</button>
   <button class="tab" role="tab" data-tab="studio" aria-selected="false">Studio</button>
   <button class="tab" role="tab" data-tab="presets" aria-selected="false">Presets</button>
+  <button class="tab" role="tab" data-tab="keys" aria-selected="false">Keys</button>
   <button class="tab" role="tab" data-tab="device" aria-selected="false">Device</button>
 </nav>
 
@@ -173,6 +174,40 @@
            aria-label="Editable keyboard, click a key to paint it"></svg>
     </div>
     <p class="hint">Click a key to paint it with the current color, then send it to the board.</p>
+  </section>
+
+  <!-- ----------------------------------------------------------------- keys -->
+  <section class="view" data-view="keys" hidden>
+    <p class="alert" id="keys-alert" hidden></p>
+
+    <div class="cards two">
+      <section class="card" aria-labelledby="remap-title">
+        <h2 id="remap-title">Remapping</h2>
+        <p class="hint" id="remap-hint">
+          Press the key you want to change, then press what it should act as.
+        </p>
+        <button class="primary" id="remap-add">Add a remap</button>
+        <div class="rows" id="remaps"></div>
+        <p class="empty" id="remaps-empty">No remaps yet. Every key types what it says.</p>
+      </section>
+
+      <section class="card" aria-labelledby="macro-title">
+        <h2 id="macro-title">Macros</h2>
+        <div class="macro-actions">
+          <input id="macro-name" placeholder="Macro name" aria-label="Macro name"
+                 maxlength="24" autocomplete="off">
+          <button class="primary" id="record-toggle">Record</button>
+        </div>
+        <p class="hint" id="record-status" hidden></p>
+        <div class="rows" id="macros"></div>
+        <p class="empty" id="macros-empty">Nothing recorded. Hit Record, use the keys, then stop.</p>
+      </section>
+    </div>
+
+    <p class="hint">
+      Remaps and macros run as a system-wide event tap, so they need Accessibility
+      permission. Recording captures every keypress on the machine until you stop it.
+    </p>
   </section>
 
   <!-- -------------------------------------------------------------- presets -->

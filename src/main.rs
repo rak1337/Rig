@@ -1,4 +1,5 @@
 mod hid;
+mod keys;
 mod render;
 mod report;
 
@@ -64,11 +65,23 @@ struct Preset {
     state: LightState,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
+struct KeysStore {
+    #[serde(default)]
+    remaps: Vec<(u16, u16)>,
+    #[serde(default)]
+    macros: Vec<keys::Macro>,
+    #[serde(default)]
+    next_macro: u64,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 struct Stored {
     state: LightState,
     presets: Vec<Preset>,
     next_id: u64,
+    #[serde(default)]
+    keys: KeysStore,
 }
 
 struct App {
@@ -77,6 +90,7 @@ struct App {
     firmware: Mutex<Option<String>>,
     renderer: Mutex<render::Settings>,
     frame: Mutex<Vec<(u8, u8, u8)>>,
+    engine: keys::Engine,
 }
 
 impl App {
@@ -88,6 +102,7 @@ impl App {
                 state: LightState::default(),
                 presets: Vec::new(),
                 next_id: 1,
+                keys: KeysStore::default(),
             });
         App {
             stored: Mutex::new(stored),
@@ -95,6 +110,7 @@ impl App {
             firmware: Mutex::new(None),
             renderer: Mutex::new(render::Settings::default()),
             frame: Mutex::new(Vec::new()),
+            engine: keys::Engine::new(),
         }
     }
 
@@ -158,6 +174,22 @@ impl App {
             *firmware_guard = Some(format!("{}.{:02}", response[8], response[9]));
         }
         Ok(firmware_guard.clone().unwrap_or_default())
+    }
+
+    fn keys_payload(&self) -> KeysPayload {
+        let stored = self.stored.lock().unwrap();
+        KeysPayload {
+            trusted: self.engine.trusted(),
+            recording: self.engine.is_recording(),
+            steps: self.engine.recorded_len(),
+            remaps: stored.keys.remaps.clone(),
+            macros: stored.keys.macros.clone(),
+        }
+    }
+
+    fn sync_remaps(&self) {
+        let remaps = self.stored.lock().unwrap().keys.remaps.clone();
+        self.engine.set_remaps(&remaps);
     }
 
     /// Try to hold a device handle, returning why it failed (if it did).
@@ -294,6 +326,26 @@ struct PresetRequest {
     state: LightState,
 }
 
+#[derive(Serialize)]
+struct KeysPayload {
+    trusted: bool,
+    recording: bool,
+    steps: usize,
+    remaps: Vec<(u16, u16)>,
+    macros: Vec<keys::Macro>,
+}
+
+#[derive(Deserialize)]
+struct RemapRequest {
+    from: u16,
+    to: u16,
+}
+
+#[derive(Deserialize)]
+struct MacroName {
+    name: String,
+}
+
 #[derive(Deserialize)]
 struct IdRequest {
     id: u64,
@@ -392,6 +444,8 @@ fn main() {
     let restore = !args.iter().any(|a| a == "--no-restore");
 
     let app = Arc::new(App::load());
+    app.sync_remaps();
+    app.engine.start();
     spawn_renderer(Arc::clone(&app));
 
     let store = match Server::http(("127.0.0.1", port)) {
@@ -507,6 +561,111 @@ fn main() {
                 }
                 app.save();
                 let payload = app.payload(None);
+                respond_json(request, &payload, 200);
+            }
+            (Method::Get, "/api/keys") => {
+                let payload = app.keys_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/keys/remap") => {
+                let Some(req) = read_json::<RemapRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    stored.keys.remaps.retain(|(from, _)| *from != req.from);
+                    stored.keys.remaps.push((req.from, req.to));
+                }
+                app.sync_remaps();
+                app.save();
+                let payload = app.keys_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/keys/remap/delete") => {
+                let Some(req) = read_json::<RemapRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    stored.keys.remaps.retain(|(from, _)| *from != req.from);
+                }
+                app.sync_remaps();
+                app.save();
+                let payload = app.keys_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/keys/record/start") => {
+                app.engine.start_recording();
+                let payload = app.keys_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/keys/record/stop") => {
+                let Some(req) = read_json::<MacroName>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                let steps = app.engine.stop_recording();
+                let dropped = steps.len();
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    if !steps.is_empty() {
+                        let id = if stored.keys.next_macro == 0 { 1 } else { stored.keys.next_macro };
+                        stored.keys.next_macro = id + 1;
+                        stored.keys.macros.push(keys::Macro {
+                            id,
+                            name: if req.name.trim().is_empty() {
+                                format!("Macro {id}")
+                            } else {
+                                req.name.trim().to_string()
+                            },
+                            steps,
+                        });
+                    }
+                }
+                if dropped == 0 {
+                    respond_json(request, &serde_json::json!({"error": "nothing was recorded"}), 200);
+                    continue;
+                }
+                app.save();
+                let payload = app.keys_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/keys/macro/play") => {
+                let Some(req) = read_json::<IdRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                let steps = {
+                    let stored = app.stored.lock().unwrap();
+                    stored
+                        .keys
+                        .macros
+                        .iter()
+                        .find(|item| item.id == req.id)
+                        .map(|item| item.steps.clone())
+                };
+                match steps {
+                    Some(steps) => {
+                        app.engine.play(steps);
+                        let payload = app.keys_payload();
+                        respond_json(request, &payload, 200);
+                    }
+                    None => respond_json(request, &serde_json::json!({"error": "no such macro"}), 404),
+                }
+            }
+            (Method::Post, "/api/keys/macro/delete") => {
+                let Some(req) = read_json::<IdRequest>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    stored.keys.macros.retain(|item| item.id != req.id);
+                }
+                app.save();
+                let payload = app.keys_payload();
                 respond_json(request, &payload, 200);
             }
             _ => {
