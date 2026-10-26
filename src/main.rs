@@ -274,6 +274,7 @@ impl App {
         let stored = self.stored.lock().unwrap();
         KeysPayload {
             trusted: self.engine.trusted(),
+            tap: self.engine.tap_active(),
             recording: self.engine.is_recording(),
             steps: self.engine.recorded_len(),
             remaps: stored.keys.remaps.clone(),
@@ -438,6 +439,7 @@ struct ProfilesPayload {
 #[derive(Serialize)]
 struct KeysPayload {
     trusted: bool,
+    tap: bool,
     recording: bool,
     steps: usize,
     remaps: Vec<(u16, u16)>,

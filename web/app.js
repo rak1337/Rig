@@ -1111,6 +1111,13 @@ function bind() {
     });
   });
 
+  document.addEventListener("pointerdown", (event) => {
+    if (!capture) return;
+    if (event.target.closest(".card")) return;
+    cancelCapture();
+    dom.recordStatus.hidden = true;
+  });
+
   document.addEventListener("keydown", (event) => {
     if (!capture) return;
     if (event.key === "Escape") {
@@ -1363,12 +1370,17 @@ async function fetchKeys() {
 }
 
 function renderKeys() {
-  dom.keysAlert.hidden = keysData.trusted;
+  const blocked = !keysData.trusted || !keysData.tap;
+  dom.keysAlert.hidden = !blocked;
   if (!keysData.trusted) {
     dom.keysAlert.innerHTML =
       "<strong>Accessibility permission is needed.</strong> Remaps and macros only "
       + "work once this app may control the computer: System Settings → Privacy & "
-      + "Security → Accessibility.";
+      + "Security → Accessibility. It retries every couple of seconds once granted.";
+  } else if (!keysData.tap) {
+    dom.keysAlert.innerHTML =
+      "<strong>The event tap isn’t running.</strong> Permission is granted, so it "
+      + "should appear within a couple of seconds — no need to restart.";
   }
 
   const remaps = document.createDocumentFragment();
@@ -1429,8 +1441,10 @@ function renderKeys() {
 
   dom.recordToggle.textContent = keysData.recording ? "Stop" : "Record";
   dom.recordToggle.classList.toggle("recording", keysData.recording);
-  dom.recordStatus.hidden = !keysData.recording;
-  if (keysData.recording) {
+  dom.recordStatus.hidden = !keysData.recording && capture !== "bind";
+  if (capture === "bind") {
+    dom.recordStatus.textContent = "Press the key that should run this macro…";
+  } else if (keysData.recording) {
     dom.recordStatus.textContent =
       `Recording — ${keysData.steps} key events captured so far.`;
   }

@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 use std::ffi::c_void;
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -21,6 +22,12 @@ const KEYCODE_FIELD: u32 = 9;
 const SOURCE_USER_DATA_FIELD: u32 = 42;
 const SYNTHETIC_TAG: i64 = 0x5249_4721; // "RIG!"
 const HID_TAP: u32 = 0;
+const TAP_DISABLED_TIMEOUT: u32 = 0xFFFF_FFFE;
+const TAP_DISABLED_USER_INPUT: u32 = 0xFFFF_FFFF;
+
+/// Live tap port, so the callback can re-enable itself and the UI can tell
+/// whether the tap is actually running.
+static TAP_PORT: AtomicPtr<c_void> = AtomicPtr::new(std::ptr::null_mut());
 
 #[link(name = "ApplicationServices", kind = "framework")]
 extern "C" {
@@ -108,18 +115,39 @@ impl Engine {
         }
         *running = true;
         let shared = Arc::clone(&self.shared);
-        std::thread::spawn(move || unsafe {
-            let mask = (1u64 << KEY_DOWN) | (1u64 << KEY_UP) | (1u64 << FLAGS_CHANGED);
+        std::thread::spawn(move || {
             let context = Arc::into_raw(shared) as *mut c_void;
-            let tap = CGEventTapCreate(HID_TAP, 0, 0, mask, callback, context);
-            if tap.is_null() {
-                return; // no permission; the UI explains why
+            let mask = (1u64 << KEY_DOWN) | (1u64 << KEY_UP) | (1u64 << FLAGS_CHANGED);
+            loop {
+                // Permission can be granted while we are already running, so keep
+                // trying instead of giving up on the first failure.
+                unsafe {
+                    if !AXIsProcessTrusted() {
+                        std::thread::sleep(Duration::from_secs(2));
+                        continue;
+                    }
+                    let tap = CGEventTapCreate(HID_TAP, 0, 0, mask, callback, context);
+                    if tap.is_null() {
+                        std::thread::sleep(Duration::from_secs(2));
+                        continue;
+                    }
+                    TAP_PORT.store(tap, Ordering::SeqCst);
+                    // A fresh tap has no keys held; stale state would latch Hypershift.
+                    (*(context as *const Shared)).held.lock().unwrap().clear();
+                    let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
+                    CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
+                    CGEventTapEnable(tap, true);
+                    CFRunLoopRun();
+                    TAP_PORT.store(std::ptr::null_mut(), Ordering::SeqCst);
+                }
+                std::thread::sleep(Duration::from_secs(1));
             }
-            let source = CFMachPortCreateRunLoopSource(std::ptr::null(), tap, 0);
-            CFRunLoopAddSource(CFRunLoopGetCurrent(), source, kCFRunLoopCommonModes);
-            CGEventTapEnable(tap, true);
-            CFRunLoopRun();
         });
+    }
+
+    /// Whether the event tap is installed right now.
+    pub fn tap_active(&self) -> bool {
+        !TAP_PORT.load(Ordering::SeqCst).is_null()
     }
 
     pub fn set_remaps(&self, remaps: &[(u16, u16)]) {
@@ -218,6 +246,15 @@ extern "C" fn callback(
     user_info: *mut c_void,
 ) -> CGEventRef {
     unsafe {
+        // The system disables a tap that takes too long; turn it back on.
+        if event_type == TAP_DISABLED_TIMEOUT || event_type == TAP_DISABLED_USER_INPUT {
+            let port = TAP_PORT.load(Ordering::SeqCst);
+            if !port.is_null() {
+                CGEventTapEnable(port, true);
+            }
+            return event;
+        }
+
         if event.is_null() || user_info.is_null() {
             return event;
         }
@@ -250,6 +287,8 @@ extern "C" fn callback(
             let triggered = shared.triggers.lock().unwrap().get(&keycode).cloned();
             if let Some(steps) = triggered {
                 play_steps(steps);
+                // Consume the trigger so the bound key does not also type.
+                return std::ptr::null_mut();
             }
         }
 
