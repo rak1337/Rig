@@ -493,12 +493,13 @@ function buildBoard(svg, device) {
 
     group.append(well, cap, tint, edge);
 
-    // Razer legends sit top-left on the cap.
     if (label) {
       const main = document.createElementNS(ns, "text");
       main.setAttribute("class", "legend");
-      main.setAttribute("x", x + 6.5);
-      main.setAttribute("y", y + 13);
+      main.setAttribute("x", x + w / 2);
+      main.setAttribute("y", y + U / 2 + (shift ? 1 : 0));
+      main.setAttribute("text-anchor", "middle");
+      main.setAttribute("font-size", label.length > 4 ? 10.5 : label.length > 2 ? 12 : 13.5);
       main.textContent = label;
       group.append(main);
       keys.push({ code, cap, tint, edge, legend: main, group, x, width: w });
@@ -509,8 +510,9 @@ function buildBoard(svg, device) {
     if (shift) {
       const secondary = document.createElementNS(ns, "text");
       secondary.setAttribute("class", "legend shift");
-      secondary.setAttribute("x", x + 6.5);
-      secondary.setAttribute("y", y + 26);
+      secondary.setAttribute("x", x + w / 2);
+      secondary.setAttribute("y", y + 15);
+      secondary.setAttribute("text-anchor", "middle");
       secondary.textContent = shift;
       group.append(secondary);
     }
@@ -544,14 +546,14 @@ function buildBoard(svg, device) {
 /// the cap and lights its legend. No separate light bar.
 function paintKey(entry, color, intensity) {
   const hex = rgbToHex(color);
-  entry.tint.style.fill = hex;
-  entry.tint.style.opacity = String(0.06 + 0.34 * intensity);
-  entry.edge.style.stroke = hex;
-  entry.edge.style.opacity = String(0.5 * intensity);
+  // Light only passes through the legend: no cap wash, no rim, no spill.
+  entry.tint.style.opacity = "0";
+  entry.edge.style.opacity = "0";
   if (entry.legend) {
-    entry.legend.style.fill = intensity > 0.06
-      ? rgbToHex(mix([255, 255, 255], color, 0.55))
+    entry.legend.style.fill = intensity > 0.02
+      ? rgbToHex(mix([255, 255, 255], color, 0.62))
       : "";
+    entry.legend.style.opacity = String(0.35 + 0.65 * Math.min(1, intensity));
   }
   entry.group.classList.toggle("lit", intensity > 0.5);
 }
@@ -619,19 +621,15 @@ function render(now = 0) {
       const value = colors.get(entry.code) || { color: CAP_BASE, intensity: 0 };
       paintKey(entry, value.color, value.intensity);
     }
-    const base = hexToRgb(state.color);
-    const spill = state.effect === "off" ? 0 : 0.12 + (state.brightness / 100) * 0.3;
-    boards[0].plate.style.fill = rgbToHex(mix([13, 16, 17], base, spill * 0.5));
-    dom.ambient.style.opacity =
-      String(state.effect === "off" ? 0.05 : 0.2 + (state.brightness / 100) * 0.5);
+    boards[0].plate.style.fill = "";
+    dom.ambient.style.opacity = "0";
   } else if (currentView === "studio") {
     for (const entry of boards[1].keys) {
       const hex = state.paint[entry.group.dataset.cell];
       paintKeyEditing(entry, hex ? hexToRgb(hex) : CAP_BASE, Boolean(hex));
     }
-    const base = hexToRgb(state.color);
-    boards[1].plate.style.fill = rgbToHex(mix([13, 16, 17], base, 0.16));
-    dom.studioAmbient.style.opacity = String(0.2 + (state.brightness / 100) * 0.5);
+    boards[1].plate.style.fill = "";
+    dom.studioAmbient.style.opacity = "0.08";
   }
 
   dom.readout.textContent = `${labelFor(state.effect)} · ${state.color.toUpperCase()}`;
