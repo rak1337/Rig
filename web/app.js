@@ -514,9 +514,13 @@ function buildBoard(svg, device) {
       const main = document.createElementNS(ns, "text");
       main.setAttribute("class", "legend");
       main.setAttribute("x", x + w / 2);
-      main.setAttribute("y", y + U / 2 + (shift ? 3.5 : 4.8));
+      // Shifted keys stack two legends, so the digit sits lower to leave a gap.
+      main.setAttribute("y", y + (shift ? U / 2 + 7 : U / 2 + 4.8));
       main.setAttribute("text-anchor", "middle");
-      main.setAttribute("font-size", label.length > 4 ? 10.5 : label.length > 2 ? 12 : 13.5);
+      main.setAttribute(
+        "font-size",
+        shift ? 12.5 : label.length > 4 ? 10.5 : label.length > 2 ? 12 : 13.5,
+      );
       main.textContent = label;
       group.append(main);
       keys.push({ code, cap, tint, edge, legend: main, group, x, width: w });
@@ -528,7 +532,7 @@ function buildBoard(svg, device) {
       const secondary = document.createElementNS(ns, "text");
       secondary.setAttribute("class", "legend shift");
       secondary.setAttribute("x", x + w / 2);
-      secondary.setAttribute("y", y + 13.5);
+      secondary.setAttribute("y", y + 12.5);
       secondary.setAttribute("text-anchor", "middle");
       secondary.textContent = shift;
       group.append(secondary);
