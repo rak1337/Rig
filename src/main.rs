@@ -137,6 +137,9 @@ struct App {
     frame: Mutex<Vec<(u8, u8, u8)>>,
     engine: keys::Engine,
     pid: u16,
+    /// Diagnostics posted by the browser, so a rendering failure on the client
+    /// is not invisible from the terminal.
+    logs: Mutex<Vec<String>>,
 }
 
 impl App {
@@ -162,6 +165,7 @@ impl App {
             frame: Mutex::new(Vec::new()),
             engine: keys::Engine::new(),
             pid,
+            logs: Mutex::new(Vec::new()),
         }
     }
 
@@ -826,6 +830,26 @@ fn main() {
                 app.save();
                 let payload = app.profiles_payload();
                 respond_json(request, &payload, 200);
+            }
+            (Method::Post, "/api/log") => {
+                #[derive(Deserialize)]
+                struct Entry {
+                    message: String,
+                }
+                if let Some(entry) = read_json::<Entry>(&mut request) {
+                    let line = format!("client: {}", entry.message);
+                    eprintln!("{line}");
+                    let mut logs = app.logs.lock().unwrap();
+                    logs.push(line);
+                    if logs.len() > 200 {
+                        logs.remove(0);
+                    }
+                }
+                respond_json(request, &serde_json::json!({"ok": true}), 200);
+            }
+            (Method::Get, "/api/log") => {
+                let logs = app.logs.lock().unwrap().clone();
+                respond_json(request, &logs, 200);
             }
             (Method::Get, "/api/export") => {
                 let backup = {

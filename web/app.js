@@ -1,9 +1,26 @@
-// Surface a rendering failure in the page instead of leaving a blank panel.
+// Surface a rendering failure in the page instead of leaving a blank panel,
+// and send it to the service log where it can actually be read.
+function report(message) {
+  try {
+    fetch("/api/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ message: String(message).slice(0, 500) }),
+    });
+  } catch { /* logging must never break the page */ }
+}
+
 window.addEventListener("error", (event) => {
   const banner = document.getElementById("alert");
-  if (!banner) return;
-  banner.hidden = false;
-  banner.textContent = `Interface error: ${event.message}`;
+  if (banner) {
+    banner.hidden = false;
+    banner.textContent = `Interface error: ${event.message}`;
+  }
+  report(`error: ${event.message} at ${event.lineno}:${event.colno}`);
+});
+
+window.addEventListener("unhandledrejection", (event) => {
+  report(`rejection: ${event.reason}`);
 });
 
 /* Rig — console for the BlackWidow TE Chroma.
@@ -1533,6 +1550,11 @@ function renderProfiles() {
 /* -------------------------------------------------------------------- boot */
 
 async function boot() {
+  report("boot: start");
+
+  const missing = Object.entries(dom).filter(([, el]) => !el).map(([name]) => name);
+  if (missing.length) report(`boot: missing elements: ${missing.join(", ")}`);
+
   buildEffects();
   buildPalette();
   bind();
@@ -1554,8 +1576,24 @@ async function boot() {
     boards = [];
     dom.alert.hidden = false;
     dom.alert.textContent = `The keyboard could not be drawn: ${err.message}`;
+    report(`build failed: ${err.message} | ${String(err.stack).split("\n")[1] || ""}`);
   }
   ready = boards.length > 0;
+  requestAnimationFrame(() => {
+    const box = dom.keyboard.getBoundingClientRect();
+    report(
+      `layout: boards=${boards.length} keys=${boards[0]?.keys.length ?? 0} ` +
+      `children=${dom.keyboard.children.length} box=${Math.round(box.width)}x${Math.round(box.height)} ` +
+      `viewBox=${dom.keyboard.getAttribute("viewBox")}`,
+    );
+    // A collapsed or zero-height box renders nothing; force a box so the board
+    // is at least visible while the real cause is found.
+    if (box.height < 40 || box.width < 40) {
+      dom.keyboard.style.height = "300px";
+      dom.keyboard.style.width = "100%";
+      report("layout: applied height fallback");
+    }
+  });
 
   if (data?.state) state = { ...state, ...data.state };
   presets = data?.presets || [];

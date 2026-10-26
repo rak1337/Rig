@@ -182,25 +182,6 @@ gamma and gain behave), the report format (90-byte layout, checksum, frame
 sizing, brightness mapping) and the keycode-to-cell map. None of it needs the
 keyboard attached, and CI runs it on every push.
 
-## Packaging as an app
-
-```sh
-./scripts/bundle.sh     # builds dist/Rig.app
-open dist/Rig.app
-```
-
-The bundle is ad-hoc signed with the identifier `dev.rakshak.rig`, so macOS
-attributes Input Monitoring and Accessibility to **Rig.app** instead of to
-whatever path `cargo build` last produced. Grant those two permissions to the
-app once:
-
-1. System Settings → Privacy & Security → **Input Monitoring** → `+` → `Rig.app`
-2. Same under **Accessibility**
-3. Quit and reopen Rig.app
-
-Rebuilding keeps the same bundle identity, which is the point — the permission
-should stop resetting on every build the way it did for the loose binary.
-
 ## Permission
 
 macOS gates keyboard HID access behind **Input Monitoring**. On first run the app

@@ -120,6 +120,13 @@
         </div>
 
         <div class="row">
+          <label class="row-label" for="idle">Dim when idle</label>
+          <input class="number" id="idle" type="number" min="0" max="180" step="1" value="0"
+                 aria-label="Dim the backlight after this many idle minutes">
+          <span class="row-meta">min</span>
+        </div>
+
+        <div class="row">
           <span class="row-label">Gaming mode</span>
           <button class="switch" id="game-mode" role="switch" aria-checked="false"
                   aria-label="Gaming mode">
