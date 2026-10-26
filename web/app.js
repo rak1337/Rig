@@ -88,11 +88,18 @@ const EFFECTS = [
   { id: "spectrum", name: "Spectrum", note: "full wheel, cycling" },
   { id: "breath", name: "Breathing", note: "fades up and down" },
   { id: "reactive", name: "Reactive", note: "lights up on keypress" },
+  { id: "fire", name: "Fire", note: "flames licking upward" },
+  { id: "starlight", name: "Starlight", note: "sparse twinkling points" },
+  { id: "ripple", name: "Ripple", note: "rings travelling outward" },
+  { id: "gradient", name: "Gradient", note: "two colors drifting" },
+  { id: "marquee", name: "Marquee", note: "a band sweeping across" },
+  { id: "comet", name: "Comet", note: "a head with a long tail" },
   { id: "paint", name: "Custom frame", note: "your own colors, key by key" },
   { id: "off", name: "Off", note: "backlight dark" },
 ];
 
 const CAP_BASE = [27, 31, 33];
+const SOFTWARE = new Set(["fire", "starlight", "ripple", "gradient", "marquee", "comet"]);
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
 const dom = {
@@ -154,6 +161,8 @@ let tool = "brush";
 let boards = [];
 let applyTimer = null;
 let flashes = new Map();
+let frameTimer = null;
+let frameColors = [];
 
 /* ------------------------------------------------------------------ colors */
 
@@ -419,25 +428,38 @@ function keyColors(now) {
       colors.set(entry.code, hex ? push(hexToRgb(hex), 1) : push(CAP_BASE, 0));
     }
   } else if (state.effect === "spectrum") {
-    const t = still ? 0 : now * 0.00006;
+    const t = still ? 0 : now * 0.000045;
     for (const entry of boards[0].keys) {
-      const hue = ((entry.x / (18.5 * STEP)) * 300 + t * 360) % 360;
-      colors.set(entry.code, push(hsv(hue, 0.86, 1), 1));
+      const hue = ((entry.x / (18.5 * STEP)) * 260 + t * 360) % 360;
+      colors.set(entry.code, push(hsv(hue, 0.82, 1), 1));
     }
   } else if (state.effect === "wave") {
-    const t = still ? 0.35 : (now * 0.00021) % 1;
+    const t = still ? 0.35 : (now * 0.00013) % 1;
     const head = state.direction === 2 ? 1 - t : t;
     for (const entry of boards[0].keys) {
       const position = entry.x / (18.5 * STEP);
-      colors.set(entry.code, push(base, Math.max(0.04, 1 - Math.abs(position - head) * 1.5)));
+      const distance = Math.abs(position - head);
+      // Gaussian falloff reads as a soft band instead of a hard edge.
+      const intensity = Math.exp(-(distance * distance) * 14);
+      colors.set(entry.code, push(base, 0.08 + intensity * 0.92));
     }
   } else if (state.effect === "breath") {
-    const pulse = still ? 0.6 : 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now * 0.0016));
+    const pulse = still ? 0.6 : 0.02 + 0.98 * (0.5 - 0.5 * Math.cos(now * 0.0011));
     const second = hexToRgb(state.color2);
     const shade = state.breath === "dual"
       ? mix(base, second, (Math.sin(now * 0.0008) + 1) / 2)
       : base;
     for (const entry of boards[0].keys) colors.set(entry.code, push(shade, pulse));
+  } else if (SOFTWARE.has(state.effect)) {
+    for (const entry of boards[0].keys) {
+      const cell = entry.group.dataset.cell;
+      let color = CAP_BASE;
+      if (cell && frameColors.length === 132) {
+        const [row, col] = cell.split(",").map(Number);
+        color = hexToRgb(frameColors[row * 22 + col]);
+      }
+      colors.set(entry.code, push(color, 1));
+    }
   } else if (state.effect === "reactive") {
     for (const entry of boards[0].keys) colors.set(entry.code, push(base, 0.18));
     if (!still) {
@@ -540,6 +562,32 @@ async function request(url, options = {}) {
   return response.json();
 }
 
+function syncPolling() {
+  const wanted = SOFTWARE.has(state.effect)
+    && currentView === "lighting"
+    && !document.hidden;
+  if (wanted && frameTimer === null) {
+    frameColors = [];
+    fetchFrame();
+    frameTimer = setInterval(fetchFrame, 60);
+  } else if (!wanted && frameTimer !== null) {
+    clearInterval(frameTimer);
+    frameTimer = null;
+  }
+}
+
+async function fetchFrame() {
+  try {
+    const colors = await request("/api/frame");
+    if (Array.isArray(colors) && colors.length === 132) {
+      frameColors = colors;
+      invalidate();
+    }
+  } catch {
+    /* service restarting; the next tick retries */
+  }
+}
+
 function apply({ immediate = false } = {}) {
   clearTimeout(applyTimer);
   const send = () => request("/api/apply", { method: "POST", body: JSON.stringify(payload()) })
@@ -588,6 +636,7 @@ function showView(name) {
   }
   currentView = name;
   invalidate();
+  syncPolling();
 }
 
 /* ---------------------------------------------------------------- controls */
@@ -612,10 +661,13 @@ function syncEffects() {
   for (const button of dom.effects.querySelectorAll(".effect")) {
     button.setAttribute("aria-checked", String(button.dataset.effect === state.effect));
   }
+  const software = SOFTWARE.has(state.effect);
   dom.directionRow.hidden = state.effect !== "wave";
-  dom.speedRow.hidden = state.effect !== "reactive";
+  dom.speedRow.hidden = !(state.effect === "reactive" || software);
   dom.breathRow.hidden = state.effect !== "breath";
-  dom.color2Row.hidden = !(state.effect === "breath" && state.breath === "dual");
+  dom.color2Row.hidden = !(
+    (state.effect === "breath" && state.breath === "dual") || state.effect === "gradient"
+  );
 
   for (const button of dom.direction.querySelectorAll("button")) {
     button.setAttribute("aria-pressed", String(Number(button.dataset.direction) === state.direction));
@@ -626,6 +678,7 @@ function syncEffects() {
   for (const button of dom.breath.querySelectorAll("button")) {
     button.setAttribute("aria-pressed", String(button.dataset.breath === state.breath));
   }
+  syncPolling();
 }
 
 function reflectColor() {
@@ -929,6 +982,9 @@ async function boot() {
   invalidate();
 }
 
-document.addEventListener("visibilitychange", () => invalidate());
+document.addEventListener("visibilitychange", () => {
+  invalidate();
+  syncPolling();
+});
 
 boot();

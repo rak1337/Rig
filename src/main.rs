@@ -1,11 +1,12 @@
 mod hid;
+mod render;
 mod report;
 
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tiny_http::{Header, Method, Response, Server, StatusCode};
 
@@ -74,6 +75,8 @@ struct App {
     stored: Mutex<Stored>,
     keyboard: Mutex<Option<hid::Keyboard>>,
     firmware: Mutex<Option<String>>,
+    renderer: Mutex<render::Settings>,
+    frame: Mutex<Vec<(u8, u8, u8)>>,
 }
 
 impl App {
@@ -90,6 +93,8 @@ impl App {
             stored: Mutex::new(stored),
             keyboard: Mutex::new(None),
             firmware: Mutex::new(None),
+            renderer: Mutex::new(render::Settings::default()),
+            frame: Mutex::new(Vec::new()),
         }
     }
 
@@ -124,6 +129,20 @@ impl App {
         if guard.is_none() {
             *guard = Some(hid::Keyboard::open(PRODUCT_ID)?);
         }
+        {
+            let mut renderer = self.renderer.lock().unwrap();
+            if render::is_software(&state.effect) {
+                renderer.active = true;
+                renderer.effect = state.effect.clone();
+                renderer.c1 = parse_color(&state.color).unwrap_or((255, 255, 255));
+                renderer.c2 = parse_color(&state.color2).unwrap_or((10, 132, 255));
+                renderer.speed = state.speed.max(1) as f32;
+                renderer.brightness = 1.0;
+            } else {
+                renderer.active = false;
+            }
+        }
+
         let outcome = push_state(guard.as_ref().expect("just opened"), state);
         if outcome.is_err() {
             *guard = None; // force a reopen on the next attempt
@@ -207,6 +226,7 @@ fn push_state(keyboard: &hid::Keyboard, state: &LightState) -> Result<String, St
         )?,
         "off" => check(keyboard.exchange(&report::off())?, "off")?,
         "paint" => push_paint(keyboard, state)?,
+        effect if render::is_software(effect) => {}
         other => return Err(format!("unknown effect {other:?}")),
     }
     Ok(String::new())
@@ -371,7 +391,8 @@ fn main() {
     let open_browser = !args.iter().any(|a| a == "--no-open");
     let restore = !args.iter().any(|a| a == "--no-restore");
 
-    let app = App::load();
+    let app = Arc::new(App::load());
+    spawn_renderer(Arc::clone(&app));
 
     let store = match Server::http(("127.0.0.1", port)) {
         Ok(server) => server,
@@ -416,6 +437,14 @@ fn main() {
             }
             (Method::Get, "/fonts/plex-mono.ttf") => {
                 respond_bytes(request, FONT_MONO.to_vec(), "font/ttf")
+            }
+            (Method::Get, "/api/frame") => {
+                let frame = app.frame.lock().unwrap().clone();
+                let hexes: Vec<String> = frame
+                    .iter()
+                    .map(|(r, g, b)| format!("#{r:02x}{g:02x}{b:02x}"))
+                    .collect();
+                respond_json(request, &hexes, 200);
             }
             (Method::Get, "/api/state") => {
                 let error = app.ensure_device();
@@ -604,4 +633,56 @@ fn uninstall_login() -> Result<(), String> {
         }
         Err(err) => Err(format!("cannot remove {}: {err}", path.display())),
     }
+}
+
+// ---------------------------------------------------------------------------
+// animation thread
+// ---------------------------------------------------------------------------
+
+fn spawn_renderer(app: Arc<App>) {
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let mut pushed_effect = String::new();
+        let mut next_open = std::time::Instant::now();
+
+        loop {
+            let settings = app.renderer.lock().unwrap().clone();
+            if !settings.active {
+                pushed_effect.clear();
+                std::thread::sleep(Duration::from_millis(80));
+                continue;
+            }
+
+            let frame = render::frame(&settings, started.elapsed().as_secs_f32());
+            {
+                let mut stored = app.frame.lock().unwrap();
+                stored.clear();
+                stored.extend_from_slice(&frame);
+            }
+
+            let mut guard = app.keyboard.lock().unwrap();
+            if guard.is_none() && std::time::Instant::now() >= next_open {
+                *guard = hid::Keyboard::open(PRODUCT_ID).ok();
+                if guard.is_none() {
+                    // Do not hammer a refused permission; keep previewing.
+                    next_open = std::time::Instant::now() + Duration::from_secs(5);
+                }
+            }
+            if let Some(keyboard) = guard.as_ref() {
+                if pushed_effect != settings.effect {
+                    let _ = keyboard.write(&report::custom_effect());
+                    pushed_effect = settings.effect.clone();
+                }
+                for row in 0..render::ROWS {
+                    let cells = &frame[row * render::COLS..(row + 1) * render::COLS];
+                    let _ = keyboard.write(&report::custom_frame_row(row, cells));
+                }
+            }
+            drop(guard);
+
+            // ~40 frames a second is past the point where the eye notices,
+            // and leaves the USB link room for effect changes.
+            std::thread::sleep(Duration::from_millis(22));
+        }
+    });
 }

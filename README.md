@@ -15,8 +15,11 @@ was documented years ago by the OpenRazer project, and it is portable.
 Razer BlackWidow Tournament Edition Chroma, `1532:0209`, firmware `1.03`.
 Every command below returns status `0x02` (successful) from the device.
 
-- **Effects** — Static, Wave (left/right), Spectrum, Breathing (one colour, two
-  colours, random), Reactive (speed 1–4), Off
+- **Device effects** — Static, Wave (left/right), Spectrum, Breathing (one colour,
+  two colours, random), Reactive (speed 1–4), Off
+- **Rendered effects** — Fire, Starlight, Ripple, Gradient, Marquee, Comet. These
+  are computed on the host and pushed as custom frames at ~40 fps, the same way
+  Razer's own software animates this board.
 - **Brightness** — 0–100, mapped to the device's 0–255 level
 - **Custom frames** — paint individual keys in the 6 × 22 LED matrix using the
   board's real key map, or fill the whole board
