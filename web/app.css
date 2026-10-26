@@ -26,7 +26,7 @@
   --dimmer: #6e6e6e;
   --green: #44d62c;
   --green-dim: #2f9c1f;
-  --light: #ff5a1f;
+  --light: #ffffff;
 
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --r: 4px;
@@ -195,10 +195,10 @@ button { font-family: inherit; }
 .alert {
   margin: 16px 0 0;
   padding: 10px 13px;
-  border: 1px solid color-mix(in srgb, #f97316 45%, transparent);
-  border-left: 2px solid #f97316;
+  border: 1px solid color-mix(in srgb, #e5484d 45%, transparent);
+  border-left: 2px solid #e5484d;
   border-radius: var(--r);
-  background: color-mix(in srgb, #f97316 8%, var(--card));
+  background: color-mix(in srgb, #e5484d 8%, var(--card));
   color: #d8d8d8;
   font-size: 12px;
   max-width: 82ch;
@@ -268,8 +268,6 @@ button { font-family: inherit; }
 .key .shadow { fill: #000; opacity: 0.55; }
 
 .key .cap { stroke: rgba(255, 255, 255, 0.055); stroke-width: 0.75; }
-
-.key .tint { transition: opacity 150ms var(--ease-out); }
 
 .key .under {
   fill: var(--light);

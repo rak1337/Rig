@@ -42,7 +42,7 @@ impl Default for LightState {
     fn default() -> Self {
         LightState {
             effect: "static".into(),
-            color: "#44d62c".into(),
+            color: "#ffffff".into(),
             color2: "#0a84ff".into(),
             brightness: 80,
             speed: 2,
@@ -482,7 +482,7 @@ fn smoke_test() -> Result<(), String> {
     let keyboard = hid::Keyboard::open(PRODUCT_ID)?;
     let mut state = LightState::default();
     state.effect = "static".into();
-    state.color = "#ff5a1f".into();
+    state.color = "#ffffff".into();
     push_state(&keyboard, &state)?;
     let response = keyboard.exchange(&report::firmware_version())?;
     println!("firmware {}.{:02}", response[8], response[9]);

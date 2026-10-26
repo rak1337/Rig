@@ -137,7 +137,7 @@ const dom = {
 
 let state = {
   effect: "static",
-  color: "#ff5a1f",
+  color: "#ffffff",
   color2: "#0a84ff",
   brightness: 85,
   speed: 2,
@@ -344,15 +344,6 @@ function buildBoard(svg) {
     cap.setAttribute("rx", 7);
     cap.setAttribute("fill", "url(#capGrad)");
 
-    const tint = document.createElementNS(ns, "rect");
-    tint.setAttribute("class", "tint");
-    tint.setAttribute("x", x);
-    tint.setAttribute("y", y);
-    tint.setAttribute("width", width);
-    tint.setAttribute("height", U);
-    tint.setAttribute("rx", 7);
-    tint.style.opacity = "0";
-
     const under = document.createElementNS(ns, "rect");
     under.setAttribute("class", "under");
     under.setAttribute("x", x + 2);
@@ -362,7 +353,7 @@ function buildBoard(svg) {
     under.setAttribute("rx", 1.5);
     under.style.opacity = "0";
 
-    group.append(shadow, cap, tint, under);
+    group.append(shadow, cap, under);
 
     if (label) {
       const text = document.createElementNS(ns, "text");
@@ -374,7 +365,7 @@ function buildBoard(svg) {
     }
 
     frag.append(group);
-    keys.push({ code, cap, tint, under, group, x, width });
+    keys.push({ code, cap, under, group, x, width });
   };
 
   ROWS.forEach((row, index) => {
@@ -396,12 +387,20 @@ function buildBoard(svg) {
   return { keys, plate };
 }
 
+/// Lighting preview: the caps stay black, the light shows as a strip bleeding
+/// out from under each cap plus the legends.
 function paintKey(entry, color, intensity) {
-  entry.tint.style.fill = rgbToHex(color);
-  entry.tint.style.opacity = String(0.05 + 0.26 * intensity);
   entry.under.style.fill = rgbToHex(color);
-  entry.under.style.opacity = String(0.85 * intensity);
+  entry.under.style.opacity = String(0.92 * intensity);
   entry.group.classList.toggle("lit", intensity > 0.5);
+}
+
+/// Studio: this surface is for editing, so painted keys show their colour.
+function paintKeyEditing(entry, color, painted) {
+  entry.cap.style.fill = painted ? rgbToHex(mix(CAP_BASE, color, 0.72)) : "url(#capGrad)";
+  entry.under.style.fill = rgbToHex(color);
+  entry.under.style.opacity = painted ? "0.9" : "0";
+  entry.group.classList.toggle("lit", painted);
 }
 
 /* ---------------------------------------------------------------- preview */
@@ -472,7 +471,7 @@ function render(now = 0) {
   } else if (currentView === "studio") {
     for (const entry of boards[1].keys) {
       const hex = state.paint[entry.group.dataset.cell];
-      paintKey(entry, hex ? hexToRgb(hex) : CAP_BASE, hex ? 1 : 0);
+      paintKeyEditing(entry, hex ? hexToRgb(hex) : CAP_BASE, Boolean(hex));
     }
     const base = hexToRgb(state.color);
     boards[1].plate.style.fill = rgbToHex(mix([13, 16, 17], base, 0.16));
