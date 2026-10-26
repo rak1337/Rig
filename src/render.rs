@@ -21,6 +21,8 @@ pub struct Settings {
     pub brightness: f32,
     pub direction: u8,
     pub breath: String,
+    /// Blank the board after this many seconds without input (0 = never).
+    pub idle_seconds: u32,
     /// Display gamma: LED output is not linear, so a plain byte copy reads wrong.
     pub gamma: f32,
     pub gain: (f32, f32, f32),
@@ -37,6 +39,7 @@ impl Default for Settings {
             brightness: 1.0,
             direction: 1,
             breath: "single".into(),
+            idle_seconds: 0,
             gamma: 1.0,
             gain: (1.0, 1.0, 1.0),
         }
@@ -248,4 +251,72 @@ fn hue_to_rgb(hue: f32) -> (f32, f32, f32) {
         _ => (1.0, 0.0, 1.0 - fraction),
     };
     (r, g, b)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn settings(effect: &str) -> Settings {
+        Settings {
+            active: true,
+            effect: effect.to_string(),
+            c1: (255, 0, 0),
+            c2: (0, 0, 255),
+            ..Settings::default()
+        }
+    }
+
+    #[test]
+    fn every_effect_fills_the_whole_matrix() {
+        for effect in [
+            "static", "wave", "spectrum", "breath", "reactive", "fire", "starlight",
+            "ripple", "gradient", "marquee", "comet", "type",
+        ] {
+            let frame = frame(&settings(effect), 1.5, &[]);
+            assert_eq!(frame.len(), CELLS, "{effect} must fill every cell");
+            assert!(
+                frame.iter().any(|(r, g, b)| *r as u16 + *g as u16 + *b as u16 > 0),
+                "{effect} produced an all-black frame"
+            );
+        }
+    }
+
+    #[test]
+    fn static_is_the_colour_that_was_asked_for() {
+        let frame = frame(&settings("static"), 0.0, &[]);
+        assert!(frame.iter().all(|cell| *cell == (255, 0, 0)));
+    }
+
+    #[test]
+    fn gamma_bends_midtones_but_not_the_ends() {
+        let mut s = settings("static");
+        s.c1 = (128, 0, 0);
+        let linear = frame(&s, 0.0, &[])[0].0;
+        s.gamma = 2.0;
+        let bent = frame(&s, 0.0, &[])[0].0;
+        assert!(bent < linear, "gamma 2 should darken a midtone");
+
+        s.c1 = (255, 0, 0);
+        s.gamma = 2.0;
+        assert_eq!(frame(&s, 0.0, &[])[0].0, 255);
+    }
+
+    #[test]
+    fn gain_trims_a_single_channel() {
+        let mut s = settings("static");
+        s.gain = (1.0, 0.5, 1.0);
+        let cell = frame(&s, 0.0, &[])[0];
+        assert_eq!(cell.0, 255);
+        assert_eq!(cell.1, 0);
+    }
+
+    #[test]
+    fn typing_ripples_from_the_pressed_key() {
+        let cell = 5 * COLS + 3;
+        let frame = frame(&settings("type"), 0.05, &[(cell, 0.02)]);
+        let pressed = frame[cell];
+        let far = frame[COLS * 5 + 20];
+        assert!(pressed.0 > far.0, "the pressed cell should be brightest");
+    }
 }

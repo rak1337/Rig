@@ -22,6 +22,17 @@ const KEYCODE_FIELD: u32 = 9;
 const SOURCE_USER_DATA_FIELD: u32 = 42;
 const SYNTHETIC_TAG: i64 = 0x5249_4721; // "RIG!"
 const HID_TAP: u32 = 0;
+const CONTROL_FLAG: u64 = 0x0004_0000;
+const OPTION_FLAG: u64 = 0x0008_0000;
+
+/// ⌃⌥ combinations, so nothing collides with normal typing.
+const HOTKEYS: [(u16, &str); 4] = [
+    (37, "toggle_off"),     // ⌃⌥L
+    (124, "next_effect"),   // ⌃⌥→
+    (126, "brightness_up"), // ⌃⌥↑
+    (125, "brightness_down"),
+];
+
 const TAP_DISABLED_TIMEOUT: u32 = 0xFFFF_FFFE;
 const TAP_DISABLED_USER_INPUT: u32 = 0xFFFF_FFFF;
 
@@ -41,6 +52,7 @@ extern "C" {
     ) -> CFMachPortRef;
     fn CGEventTapEnable(tap: CFMachPortRef, enable: bool);
     fn CGEventGetIntegerValueField(event: CGEventRef, field: u32) -> i64;
+    fn CGEventGetFlags(event: CGEventRef) -> u64;
     fn CGEventSetIntegerValueField(event: CGEventRef, field: u32, value: i64);
     fn CGEventCreateKeyboardEvent(source: *mut c_void, keycode: u16, down: bool) -> CGEventRef;
     fn CGEventPost(tap: u32, event: CGEventRef);
@@ -85,6 +97,7 @@ struct Shared {
     /// (keycode, when) for every real keypress, drained by the renderer.
     presses: Mutex<Vec<(u16, Instant)>>,
     triggers: Mutex<HashMap<u16, Vec<Step>>>,
+    commands: Mutex<Vec<String>>,
     hyper_key: Mutex<Option<u16>>,
     layer2: Mutex<HashMap<u16, u16>>,
     held: Mutex<std::collections::HashSet<u16>>,
@@ -213,6 +226,11 @@ impl Engine {
         drained
     }
 
+    /// Actions requested by a global hotkey, for the caller to apply.
+    pub fn drain_commands(&self) -> Vec<String> {
+        std::mem::take(&mut *self.shared.commands.lock().unwrap())
+    }
+
     pub fn play(&self, steps: Vec<Step>) {
         play_steps(steps);
     }
@@ -283,6 +301,14 @@ extern "C" fn callback(
         }
 
         if event_type == KEY_DOWN {
+            let flags = CGEventGetFlags(event);
+            if flags & (CONTROL_FLAG | OPTION_FLAG) == (CONTROL_FLAG | OPTION_FLAG) {
+                if let Some((_, action)) = HOTKEYS.iter().find(|(key, _)| *key == keycode) {
+                    shared.commands.lock().unwrap().push((*action).to_string());
+                    return std::ptr::null_mut();
+                }
+            }
+
             shared.presses.lock().unwrap().push((keycode, Instant::now()));
             let triggered = shared.triggers.lock().unwrap().get(&keycode).cloned();
             if let Some(steps) = triggered {
@@ -409,4 +435,31 @@ pub fn cell_for_keycode(key: u16) -> Option<usize> {
         _ => return None,
     };
     Some(cell)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn letter_keys_map_to_distinct_cells() {
+        let mut seen = std::collections::HashSet::new();
+        // 10 is unused on ANSI boards, so the letter block is 0..9 and 11..17.
+        for keycode in (0..=9u16).chain(11..=17) {
+            let cell = cell_for_keycode(keycode).expect("letters must map");
+            assert!(cell < 6 * 22);
+            assert!(seen.insert(cell), "keycode {keycode} collides");
+        }
+    }
+
+    #[test]
+    fn space_and_escape_land_where_they_should() {
+        assert_eq!(cell_for_keycode(49), Some(5 * 22 + 7));
+        assert_eq!(cell_for_keycode(53), Some(1));
+    }
+
+    #[test]
+    fn unknown_keys_are_not_guessed() {
+        assert_eq!(cell_for_keycode(200), None);
+    }
 }

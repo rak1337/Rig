@@ -217,6 +217,9 @@ const dom = {
   gainROut: document.getElementById("gain-r-out"),
   gainGOut: document.getElementById("gain-g-out"),
   gainBOut: document.getElementById("gain-b-out"),
+  idle: document.getElementById("idle"),
+  exportBtn: document.getElementById("export-btn"),
+  importFile: document.getElementById("import-file"),
 };
 
 let state = {
@@ -231,6 +234,7 @@ let state = {
   driver: true,
   game_mode: false,
   macro_mode: false,
+  idle_minutes: 0,
   gamma: 1,
   gain_r: 1,
   gain_g: 1,
@@ -683,6 +687,7 @@ const payload = () => ({
   driver: state.driver,
   game_mode: state.game_mode,
   macro_mode: state.macro_mode,
+  idle_minutes: state.idle_minutes,
   gamma: state.gamma,
   gain_r: state.gain_r,
   gain_g: state.gain_g,
@@ -854,6 +859,10 @@ function syncColor() {
   reflectColor();
 }
 
+function syncIdle() {
+  dom.idle.value = String(state.idle_minutes ?? 0);
+}
+
 function syncCalibration() {
   dom.gamma.value = String(state.gamma);
   dom.gammaOut.value = Number(state.gamma).toFixed(2);
@@ -908,6 +917,7 @@ function syncAll() {
   syncColor();
   syncBrightness();
   syncCalibration();
+  syncIdle();
   syncSwitches();
 }
 
@@ -1006,6 +1016,38 @@ function bind() {
   bindCalibration(dom.gainR, dom.gainROut, "gain_r", 0.01);
   bindCalibration(dom.gainG, dom.gainGOut, "gain_g", 0.01);
   bindCalibration(dom.gainB, dom.gainBOut, "gain_b", 0.01);
+
+  dom.idle.addEventListener("change", () => {
+    state.idle_minutes = Math.max(0, Math.min(180, Number(dom.idle.value) || 0));
+    syncIdle();
+    apply({ immediate: true });
+  });
+
+  dom.exportBtn.addEventListener("click", async () => {
+    const data = await request("/api/export");
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "rig-backup.json";
+    link.click();
+    URL.revokeObjectURL(link.href);
+  });
+
+  dom.importFile.addEventListener("change", async () => {
+    const file = dom.importFile.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    try {
+      const data = await request("/api/import", { method: "POST", body: text });
+      updateFromServer(data);
+      if (data.state) state = { ...state, ...data.state };
+      syncAll();
+      invalidate();
+    } catch {
+      showAlert("That file could not be imported.");
+    }
+    dom.importFile.value = "";
+  });
 
   dom.brightness.addEventListener("input", () => {
     state.brightness = Number(dom.brightness.value);

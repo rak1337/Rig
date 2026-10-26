@@ -221,7 +221,8 @@
     </section>
 
     <p class="hint">
-      Remaps and macros run as a system-wide event tap, so they need Accessibility
+      Global shortcuts: ⌃⌥L toggles the lights, ⌃⌥→ steps the effect, ⌃⌥↑ and ⌃⌥↓
+      change brightness. Remaps and macros run as a system-wide event tap, so they need Accessibility
       permission. Recording captures every keypress on the machine until you stop it.
     </p>
   </section>
@@ -321,6 +322,16 @@
         <label class="row-label" for="gain-b">Blue</label>
         <input type="range" id="gain-b" min="30" max="200" step="1" value="100">
         <output id="gain-b-out">100</output>
+      </div>
+    </section>
+
+    <section class="card wide" aria-labelledby="backup-title">
+      <h2 id="backup-title">Backup</h2>
+      <p class="hint">Move presets, profiles, remaps and macros between machines.</p>
+      <div class="macro-actions">
+        <button class="ghost" id="export-btn">Export JSON</button>
+        <label class="ghost" for="import-file">Import JSON</label>
+        <input id="import-file" type="file" accept="application/json,.json" hidden>
       </div>
     </section>
 

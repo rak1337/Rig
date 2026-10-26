@@ -825,6 +825,21 @@ output.bare::after { content: ""; }
 
 .mono { font-family: "Plex Mono", ui-monospace, monospace; font-size: 11px; }
 
+.number {
+  all: unset;
+  width: 62px;
+  padding: 5px 8px;
+  border: 1px solid var(--line-2);
+  border-radius: 3px;
+  background: var(--input);
+  font-family: "Plex Mono", ui-monospace, monospace;
+  font-size: 11.5px;
+  color: var(--text);
+  text-align: right;
+}
+
+label.ghost { display: inline-flex; align-items: center; }
+
 .switch-row {
   display: flex;
   align-items: center;

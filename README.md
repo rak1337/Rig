@@ -134,6 +134,54 @@ The login item starts the service at login and re-applies
 look without you touching it. On Windows, Synapse does the same job. Whichever
 machine applies last wins while both are connected.
 
+## Running it for other devices
+
+By default the console binds to `127.0.0.1`, so only this machine can reach it.
+To drive the keyboard from a phone or another computer on the same network:
+
+```sh
+./target/release/rig --host 0.0.0.0
+rig listening on http://0.0.0.0:7311
+open this to sign in: http://0.0.0.0:7311/?t=<token>
+```
+
+A token is generated whenever the bind address is not loopback, because this
+service drives real hardware. Opening the printed link trades the token for a
+cookie and redirects, so it leaves the address bar. `--token` or `RIG_TOKEN`
+sets your own. The page is plain HTTP: keep it on a trusted network, or put it
+behind Tailscale / a reverse proxy with TLS. Do not port-forward it to the
+internet.
+
+## Global shortcuts
+
+| Keys | Action |
+| --- | --- |
+| ⌃⌥L | lights off / back on |
+| ⌃⌥→ | next effect |
+| ⌃⌥↑ / ⌃⌥↓ | brightness up / down |
+
+These are handled by the same event tap as remapping, so they need Accessibility
+permission and work in any app.
+
+## Idle and backups
+
+**Dim when idle** (Device tab) blanks the backlight after N minutes without
+keyboard or mouse input and restores it on the next input. Zero disables it.
+
+**Backup** exports presets, profiles, remaps, macros and calibration as one JSON
+file and imports it again, so a setup moves between machines.
+
+## Tests
+
+```sh
+cargo test
+```
+
+Covers the frame renderer (every effect fills the matrix, static is exact,
+gamma and gain behave), the report format (90-byte layout, checksum, frame
+sizing, brightness mapping) and the keycode-to-cell map. None of it needs the
+keyboard attached, and CI runs it on every push.
+
 ## Permission
 
 macOS gates keyboard HID access behind **Input Monitoring**. On first run the app

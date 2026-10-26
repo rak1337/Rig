@@ -134,3 +134,40 @@ pub fn get_led_state(led: u8) -> [u8; REPORT_LEN] {
 pub fn get_brightness() -> [u8; REPORT_LEN] {
     build(CLASS_LED, 0x83, 0x03, &[VARSTORE, LED_BACKLIGHT])
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reports_are_ninety_bytes_with_a_valid_checksum() {
+        let report = brightness(80);
+        assert_eq!(report.len(), REPORT_LEN);
+        let mut crc = 0u8;
+        for byte in &report[2..88] {
+            crc ^= byte;
+        }
+        assert_eq!(report[88], crc);
+        assert_eq!(report[6], 0x03);
+        assert_eq!(report[7], 0x03);
+    }
+
+    #[test]
+    fn a_custom_frame_row_carries_the_whole_row() {
+        let colors = vec![(255u8, 0u8, 0u8); MATRIX_COLS];
+        let report = custom_frame_row(2, &colors);
+        assert_eq!(report[5] as usize, 4 + MATRIX_COLS * 3);
+        assert_eq!(report[8], 0xFF); // frame id
+        assert_eq!(report[9], 2); // row
+        assert_eq!(report[10], 0); // first column
+        assert_eq!(report[11], (MATRIX_COLS - 1) as u8);
+    }
+
+    #[test]
+    fn brightness_maps_percent_to_device_scale() {
+        let report = brightness(100);
+        assert_eq!(report[10], 255);
+        let report = brightness(0);
+        assert_eq!(report[10], 0);
+    }
+}

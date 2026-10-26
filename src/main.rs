@@ -1,6 +1,7 @@
 mod devices;
 mod frontmost;
 mod hid;
+mod input;
 mod keys;
 mod render;
 mod report;
@@ -40,6 +41,8 @@ struct LightState {
     driver: bool,
     game_mode: bool,
     macro_mode: bool,
+    #[serde(default)]
+    idle_minutes: u32,
     #[serde(default = "one")]
     gamma: f32,
     #[serde(default = "one")]
@@ -68,6 +71,7 @@ impl Default for LightState {
             driver: true,
             game_mode: false,
             macro_mode: false,
+            idle_minutes: 0,
             gamma: 1.0,
             gain_r: 1.0,
             gain_g: 1.0,
@@ -203,6 +207,7 @@ impl App {
                 renderer.brightness = 1.0;
                 renderer.direction = state.direction;
                 renderer.breath = state.breath.clone();
+                renderer.idle_seconds = state.idle_minutes.saturating_mul(60);
                 renderer.gamma = state.gamma;
                 renderer.gain = (state.gain_r, state.gain_g, state.gain_b);
             } else {
@@ -429,6 +434,17 @@ struct PresetRequest {
     state: LightState,
 }
 
+#[derive(Serialize, Deserialize)]
+struct Backup {
+    state: LightState,
+    #[serde(default)]
+    presets: Vec<Preset>,
+    #[serde(default)]
+    profiles: Vec<Profile>,
+    #[serde(default)]
+    keys: KeysStore,
+}
+
 #[derive(Serialize)]
 struct ProfilesPayload {
     active: Option<u64>,
@@ -567,19 +583,39 @@ fn main() {
     app.engine.start();
     spawn_renderer(Arc::clone(&app));
     spawn_watcher(Arc::clone(&app));
+    spawn_hotkeys(Arc::clone(&app));
 
-    let store = match Server::http(("127.0.0.1", port)) {
+    let host = flag_value(&args, "--host").unwrap_or_else(|| "127.0.0.1".into());
+    let loopback = host == "127.0.0.1" || host == "localhost" || host == "::1";
+    let token = match flag_value(&args, "--token").or_else(|| std::env::var("RIG_TOKEN").ok()) {
+        Some(value) => Some(value),
+        // Anything that is not loopback drives real hardware, so it needs a key.
+        None if !loopback => Some(random_token()),
+        None => None,
+    };
+
+    let store = match Server::http((host.as_str(), port)) {
         Ok(server) => server,
         Err(err) => {
-            eprintln!("rig: cannot listen on 127.0.0.1:{port}: {err}");
+            eprintln!("rig: cannot listen on {host}:{port}: {err}");
             std::process::exit(1);
         }
     };
 
-    let url = format!("http://127.0.0.1:{port}");
-    println!("rig listening on {url}");
+    let url = format!("http://{host}:{port}");
+    match &token {
+        Some(token) => {
+            println!("rig listening on {url}");
+            println!("open this to sign in: {url}/?t={token}");
+        }
+        None => println!("rig listening on {url}"),
+    }
     if open_browser {
-        let _ = std::process::Command::new("open").arg(&url).spawn();
+        let target = match &token {
+            Some(token) => format!("{url}/?t={token}"),
+            None => url.clone(),
+        };
+        let _ = std::process::Command::new("open").arg(target).spawn();
     }
 
     if restore {
@@ -591,6 +627,39 @@ fn main() {
     }
 
     for mut request in store.incoming_requests() {
+        if let Some(expected) = token.as_deref() {
+            let url_now = request.url().to_string();
+            let supplied = query_param(&url_now, "t")
+                .or_else(|| cookie_value(&request, "rig_token"));
+
+            if supplied.as_deref() != Some(expected) {
+                let body = "<!doctype html><meta charset=utf-8><title>Rig</title>\
+                    <body style=\"margin:0;height:100vh;display:grid;place-items:center;\
+                    background:#141414;color:#ddd;font:14px system-ui\">\
+                    <div style=\"text-align:center\"><h1 style=\"font-size:15px;\
+                    letter-spacing:.14em;text-transform:uppercase\">Rig</h1>\
+                    <p>Open the link printed in the terminal — it carries the access token.</p></div>";
+                let _ = request.respond(
+                    Response::from_string(body)
+                        .with_status_code(StatusCode(401))
+                        .with_header(Header::from_bytes(&b"Content-Type"[..], &b"text/html; charset=utf-8"[..]).unwrap()),
+                );
+                continue;
+            }
+
+            if query_param(&url_now, "t").is_some() {
+                // Trade the token in the URL for a cookie and get it out of the bar.
+                let path = url_now.split('?').next().unwrap_or("/").to_string();
+                let cookie = format!("rig_token={expected}; Path=/; HttpOnly; SameSite=Lax");
+                let _ = request.respond(
+                    Response::empty(StatusCode(302))
+                        .with_header(Header::from_bytes(&b"Location"[..], path.as_bytes()).unwrap())
+                        .with_header(Header::from_bytes(&b"Set-Cookie"[..], cookie.as_bytes()).unwrap()),
+                );
+                continue;
+            }
+        }
+
         let path = request.url().split('?').next().unwrap_or("/").to_string();
         let method = request.method().clone();
 
@@ -756,6 +825,38 @@ fn main() {
                 }
                 app.save();
                 let payload = app.profiles_payload();
+                respond_json(request, &payload, 200);
+            }
+            (Method::Get, "/api/export") => {
+                let backup = {
+                    let stored = app.stored.lock().unwrap();
+                    Backup {
+                        state: stored.state.clone(),
+                        presets: stored.presets.clone(),
+                        profiles: stored.profiles.clone(),
+                        keys: stored.keys.clone(),
+                    }
+                };
+                respond_json(request, &backup, 200);
+            }
+            (Method::Post, "/api/import") => {
+                let Some(backup) = read_json::<Backup>(&mut request) else {
+                    respond_json(request, &serde_json::json!({"error": "bad request"}), 400);
+                    continue;
+                };
+                {
+                    let mut stored = app.stored.lock().unwrap();
+                    stored.state = backup.state.clone();
+                    stored.presets = backup.presets;
+                    stored.profiles = backup.profiles;
+                    stored.keys = backup.keys;
+                    stored.revision += 1;
+                }
+                app.sync_remaps();
+                app.sync_triggers();
+                app.save();
+                let _ = app.apply(&backup.state);
+                let payload = app.payload(None);
                 respond_json(request, &payload, 200);
             }
             (Method::Get, "/api/keys") => {
@@ -1077,7 +1178,13 @@ fn spawn_renderer(app: Arc<App>) {
                 .into_iter()
                 .filter_map(|(key, age)| keys::cell_for_keycode(key).map(|cell| (cell, age)))
                 .collect();
-            let frame = render::frame(&settings, started.elapsed().as_secs_f32(), &presses);
+            let mut frame =
+                render::frame(&settings, started.elapsed().as_secs_f32(), &presses);
+            if settings.idle_seconds > 0
+                && input::seconds_since_input() > settings.idle_seconds as f64
+            {
+                frame = vec![(0, 0, 0); render::CELLS];
+            }
             {
                 let mut stored = app.frame.lock().unwrap();
                 stored.clear();
@@ -1143,5 +1250,91 @@ fn spawn_watcher(app: Arc<App>) {
             }
             std::thread::sleep(Duration::from_millis(1200));
         }
+    });
+}
+
+// ---------------------------------------------------------------------------
+// request helpers
+// ---------------------------------------------------------------------------
+
+fn query_param(url: &str, name: &str) -> Option<String> {
+    let (_, query) = url.split_once('?')?;
+    for pair in query.split('&') {
+        if let Some((key, value)) = pair.split_once('=') {
+            if key == name {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+fn cookie_value(request: &tiny_http::Request, name: &str) -> Option<String> {
+    for header in request.headers() {
+        if header.field.equiv("Cookie") {
+            for part in header.value.as_str().split(';') {
+                let part = part.trim();
+                if let Some(value) = part.strip_prefix(&format!("{name}=")) {
+                    return Some(value.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
+fn random_token() -> String {
+    let mut bytes = [0u8; 16];
+    if let Ok(mut file) = std::fs::File::open("/dev/urandom") {
+        if file.read_exact(&mut bytes).is_ok() {
+            return bytes.iter().map(|byte| format!("{byte:02x}")).collect();
+        }
+    }
+    format!(
+        "{:x}{:x}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0)
+    )
+}
+
+// ---------------------------------------------------------------------------
+// global hotkeys
+// ---------------------------------------------------------------------------
+
+fn spawn_hotkeys(app: Arc<App>) {
+    std::thread::spawn(move || loop {
+        for command in app.engine.drain_commands() {
+            let mut state = app.stored.lock().unwrap().state.clone();
+            match command.as_str() {
+                "toggle_off" => {
+                    state.effect = if state.effect == "off" {
+                        "static".to_string()
+                    } else {
+                        "off".to_string()
+                    };
+                }
+                "next_effect" => {
+                    const ORDER: [&str; 6] = ["static", "wave", "spectrum", "breath", "reactive", "fire"];
+                    let index = ORDER.iter().position(|item| *item == state.effect).unwrap_or(0);
+                    state.effect = ORDER[(index + 1) % ORDER.len()].to_string();
+                }
+                "brightness_up" => state.brightness = (state.brightness + 10).min(100),
+                "brightness_down" => state.brightness = state.brightness.saturating_sub(10),
+                _ => continue,
+            }
+            {
+                let mut stored = app.stored.lock().unwrap();
+                stored.state = state.clone();
+                stored.revision += 1;
+            }
+            if let Err(err) = app.apply(&state) {
+                eprintln!("rig: hotkey could not apply: {err}");
+            }
+            app.save();
+        }
+        std::thread::sleep(Duration::from_millis(80));
     });
 }
