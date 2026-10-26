@@ -152,6 +152,31 @@ sets your own. The page is plain HTTP: keep it on a trusted network, or put it
 behind Tailscale / a reverse proxy with TLS. Do not port-forward it to the
 internet.
 
+## Deploying behind a domain
+
+The service has to run on the machine the keyboard is plugged into, so a public
+domain is reached through a tunnel rather than by hosting the app elsewhere:
+
+```sh
+RIG_TOKEN=$(openssl rand -hex 16) ./target/release/rig --no-open --host 127.0.0.1
+cloudflared tunnel --url http://127.0.0.1:7311    # or Tailscale Funnel
+```
+
+Point `azmuth.dev` at the tunnel. Binding to loopback and letting the tunnel
+forward is safer than `--host 0.0.0.0`, because then nothing on the local
+network can reach the port directly.
+
+Two things to be clear about before it is public:
+
+- The token is the only access control, and it grants full control — lighting,
+  remaps, macros, keystrokes. Use a long random value, rotate it if the URL ever
+  leaks, and put Cloudflare Access (or similar) in front for real auth. Because
+  the page runs on the same origin as the API, anything served into that origin —
+  including a third-party script — can call the API with the session cookie.
+  That is worth weighing against loading analytics on the control page.
+- The gtag snippet in `web/index.html` is skipped for `localhost`, `127.0.0.1`
+  and `::1`, so local runs stay offline; it loads on any other hostname.
+
 ## Global shortcuts
 
 | Keys | Action |
