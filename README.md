@@ -1,25 +1,20 @@
 <p align="center">
-  <img src="assets/icon-256.png" width="112" alt="Rig">
-</p>
-
-<h1 align="center">Rig</h1>
-
-<p align="center">
-  Lighting, remapping and macros for a Razer keyboard on macOS.<br>
-  No Synapse. No kernel extension. No account.
+  <img src="assets/banner.png" alt="Rig — keyboard control for macOS" width="100%">
 </p>
 
 <p align="center">
   <a href="https://github.com/rak1337/Rig/actions/workflows/ci.yml"><img src="https://github.com/rak1337/Rig/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%2012%2B-lightgrey" alt="macOS 12+">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT"></a>
+  <img src="https://img.shields.io/badge/macOS-12%2B-1c1f22?style=flat-square" alt="macOS 12+">
+  <img src="https://img.shields.io/badge/Rust-2021-dea584?style=flat-square" alt="Rust 2021">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/licence-MIT-44d62c?style=flat-square" alt="MIT"></a>
 </p>
 
----
+<p align="center"><em>Lighting, remapping and macros for a Razer keyboard on macOS.<br>
+No Synapse. No kernel extension. No account.</em></p>
 
-Rig talks to the keyboard directly over USB. It runs as a small local service
-and serves its own console in the browser, so there is nothing to install but a
-single binary — and nothing to sign into.
+Rig talks to the keyboard directly over USB. It runs as one small local service
+and serves its own console in the browser — a single binary, no dependencies,
+nothing to sign into.
 
 It exists because Razer never shipped working macOS support for this hardware.
 The Synapse build available for it on macOS is a Synapse 2-era client whose

@@ -5,13 +5,32 @@ on:
     branches: [main]
   pull_request:
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUST_BACKTRACE: 1
+  CARGO_TERM_COLOR: always
+
 jobs:
   test:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Toolchain
+        run: |
+          rustc --version
+          cargo --version
+          sw_vers
+
       - name: Test
         run: cargo test --locked
+
       - name: Build
         run: cargo build --release --locked
