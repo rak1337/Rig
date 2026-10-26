@@ -13,17 +13,43 @@ not.
 | `hld.azmuth.dev` | nothing | Workers static assets | Cloudflare edge |
 | `rig.azmuth.dev` | **USB keyboard** | **your Mac** | Cloudflare Tunnel |
 
-## Why Rig cannot be a Worker
+## Two builds, two homes
 
-A Worker runs on Cloudflare's machines with no USB bus, no IOKit, no HID
-permissions and no persistent process. Rig is not a web page that talks to a
-service — it *is* the service: it opens the keyboard, renders 132-cell frames at
-30 fps and writes them over USB. Deploying `dist/` for Rig would publish a UI
-whose every request fails, because there is no backend anywhere near a keyboard.
+Rig now has two shapes, because the browser can do part of the job:
 
-So `rig.azmuth.dev` is a tunnel to the Mac, and that is the only exception. If
-you want Rig's UI to be publicly viewable without hardware, that is a separate
-demo build with the API stubbed out — not a deployment of the real thing.
+| Build | What it does | Where it belongs |
+| --- | --- | --- |
+| `./target/release/rig` (native) | lighting, presets, remaps, macros, hotkeys, idle, remote access | runs on the Mac, reachable through the tunnel |
+| `deploy/build-webhid.sh` (static) | lighting only, straight from the browser over WebHID | Workers at `rig.azmuth.dev` |
+
+The static build has no server at all: the page talks to the keyboard's vendor
+interface directly with WebHID. `deploy/build-webhid.sh` assembles
+`dist-webhid/` with the HTML, the JS, the stylesheet, the fonts and a
+`wrangler.jsonc` already pointing at `rig.azmuth.dev`.
+
+```sh
+./deploy/build-webhid.sh
+python3 -m http.server 8080 --directory dist-webhid   # needs http://localhost
+cd dist-webhid && npx wrangler deploy
+```
+
+Two limits of the static build, both inherent:
+
+- Animations only run while the tab is visible. A still colour persists after the
+  tab closes, because one report is enough; a moving effect does not.
+- It cannot remap keys or run macros. Those need a system-wide event tap, which
+  only a native process can install.
+
+## Why the native build cannot be a Worker
+
+A Worker runs on Cloudflare's machines, which have no USB bus and no keyboard
+attached. The *native* build therefore cannot be deployed: it is the service that
+opens the device, renders frames at 30 fps and installs the event tap for
+remapping and macros.
+
+What can be deployed is the static WebHID build above, because in that shape the
+browser is the client *and* the owner of the device — the page runs on the
+visitor's machine, next to their own keyboard.
 
 ## Adding a static app
 

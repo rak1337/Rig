@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Rig — keyboard lighting in the browser</title>
+<link rel="stylesheet" href="/app.css">
+</head>
+<body>
+
+<header class="bar">
+  <div class="bar-left">
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="2" y="15" width="5.5" height="5" rx="1"/>
+      <rect x="9.25" y="10" width="5.5" height="10" rx="1"/>
+      <rect x="16.5" y="5" width="5.5" height="15" rx="1"/>
+    </svg>
+    <span class="wordmark">Rig</span>
+  </div>
+  <div class="bar-center">
+    <span class="device-tab" id="device-tab">No keyboard linked</span>
+  </div>
+  <div class="bar-right">
+    <span class="status-led" id="chip-led"></span>
+    <span id="chip-status">Not connected</span>
+  </div>
+</header>
+
+<main class="content">
+  <p class="alert" id="alert" hidden></p>
+
+  <div class="hero">
+    <div class="ambient" id="ambient" aria-hidden="true"></div>
+    <svg id="keyboard" viewBox="0 0 971 328" role="img" aria-label="Keyboard preview"></svg>
+  </div>
+
+  <div class="cards">
+    <section class="card" aria-labelledby="fx-title">
+      <h2 id="fx-title">Effect</h2>
+      <div class="effects" role="radiogroup" aria-labelledby="fx-title" id="effects"></div>
+      <button class="primary spaced" id="connect">Connect keyboard</button>
+    </section>
+
+    <section class="card" aria-labelledby="color-title">
+      <h2 id="color-title">Color</h2>
+      <div class="wheel-hold"><canvas id="wheel" width="176" height="176" aria-label="Color wheel"></canvas></div>
+      <div class="color-line">
+        <label class="hex" for="hex"><span aria-hidden="true">#</span>
+          <input id="hex" maxlength="6" spellcheck="false" autocomplete="off" aria-label="Hex color"></label>
+        <div class="palette" id="palette" role="group" aria-label="Saved colors"></div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="adj-title">
+      <h2 id="adj-title">Adjust</h2>
+      <div class="row">
+        <label class="row-label" for="brightness">Brightness</label>
+        <input type="range" id="brightness" min="0" max="100" value="80">
+        <output id="brightness-out" for="brightness">80</output>
+      </div>
+      <div class="row" id="direction-row" hidden>
+        <span class="row-label">Direction</span>
+        <div class="segmented" id="direction">
+          <button type="button" data-direction="1" aria-pressed="true">→</button>
+          <button type="button" data-direction="2" aria-pressed="false">←</button>
+        </div>
+      </div>
+      <div class="row" id="speed-row" hidden>
+        <span class="row-label">Speed</span>
+        <div class="segmented" id="speed">
+          <button type="button" data-speed="1" aria-pressed="false">1</button>
+          <button type="button" data-speed="2" aria-pressed="true">2</button>
+          <button type="button" data-speed="3" aria-pressed="false">3</button>
+          <button type="button" data-speed="4" aria-pressed="false">4</button>
+        </div>
+      </div>
+      <p class="hint" id="hint">
+        Lighting runs in this tab over WebHID. Keep it open while an effect
+        animates; a still colour stays set after you close it.
+      </p>
+    </section>
+  </div>
+</main>
+
+<script src="/hid.js"></script>
+</body>
+</html>
