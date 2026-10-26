@@ -1,4 +1,6 @@
 target/
 *.log
 .DS_Store
+dist/
 dist-webhid/
+assets/Rig.iconset/
