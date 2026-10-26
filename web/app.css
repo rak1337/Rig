@@ -280,11 +280,11 @@ button { font-family: inherit; }
   transition: fill 400ms var(--ease-out);
 }
 
-.key .well { fill: #080b0c; }
+.key .well { fill: #07090a; }
 
 .key .cap {
-  fill: #262b2e;
-  stroke: rgba(255, 255, 255, 0.07);
+  fill: #2b3135;
+  stroke: rgba(255, 255, 255, 0.1);
   stroke-width: 0.8;
 }
 
@@ -303,7 +303,6 @@ button { font-family: inherit; }
   font-weight: 640;
   letter-spacing: 0.01em;
   text-anchor: middle;
-  dominant-baseline: middle;
   pointer-events: none;
   transition: fill 170ms var(--ease-out), opacity 170ms var(--ease-out);
 }

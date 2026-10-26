@@ -514,7 +514,7 @@ function buildBoard(svg, device) {
       const main = document.createElementNS(ns, "text");
       main.setAttribute("class", "legend");
       main.setAttribute("x", x + w / 2);
-      main.setAttribute("y", y + U / 2 + (shift ? 1 : 0));
+      main.setAttribute("y", y + U / 2 + (shift ? 3.5 : 4.8));
       main.setAttribute("text-anchor", "middle");
       main.setAttribute("font-size", label.length > 4 ? 10.5 : label.length > 2 ? 12 : 13.5);
       main.textContent = label;
@@ -528,7 +528,7 @@ function buildBoard(svg, device) {
       const secondary = document.createElementNS(ns, "text");
       secondary.setAttribute("class", "legend shift");
       secondary.setAttribute("x", x + w / 2);
-      secondary.setAttribute("y", y + 15);
+      secondary.setAttribute("y", y + 13.5);
       secondary.setAttribute("text-anchor", "middle");
       secondary.textContent = shift;
       group.append(secondary);
