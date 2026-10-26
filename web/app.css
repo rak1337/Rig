@@ -237,7 +237,8 @@ button { font-family: inherit; }
   position: relative;
   display: block;
   width: 100%;
-  max-width: 1080px;
+  max-width: 1040px;
+  max-height: 46vh;
   height: auto;
   margin: 0 auto;
 }
@@ -325,7 +326,7 @@ button { font-family: inherit; }
   flex: none;
 }
 
-.cards.two { grid-template-columns: 1fr 1fr; margin-top: 22px; }
+.cards.two { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 22px; }
 
 .card {
   position: relative;
@@ -347,52 +348,59 @@ button { font-family: inherit; }
 
 /* effects */
 
-.effects { display: flex; flex-direction: column; gap: 1px; }
+.effects {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(112px, 1fr));
+  gap: 6px;
+}
 
 .effect {
   all: unset;
   position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 7px 9px 7px 11px;
-  border-radius: 2px;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #191919;
   cursor: pointer;
-  transition: background 120ms var(--ease-out);
+  transition: background 120ms var(--ease-out), border-color 120ms var(--ease-out);
 }
 
-.effect:hover { background: #262626; }
+.effect:hover { background: #232323; border-color: var(--line-2); }
 
 .effect::before {
   content: "";
   position: absolute;
   left: 0;
-  top: 7px;
-  bottom: 7px;
+  top: 0;
+  bottom: 0;
   width: 2px;
+  border-radius: 3px 0 0 3px;
   background: var(--green);
   transform: scaleY(0);
   transition: transform 150ms var(--ease-out);
 }
 
-.effect[aria-checked="true"] { background: #262626; }
+.effect[aria-checked="true"] {
+  background: color-mix(in srgb, var(--green) 12%, #191919);
+  border-color: color-mix(in srgb, var(--green) 45%, transparent);
+}
 .effect[aria-checked="true"]::before { transform: scaleY(1); }
 
 .effect-name {
-  font-size: 12.5px;
+  font-size: 12px;
   color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   transition: color 120ms var(--ease-out);
 }
 
 .effect[aria-checked="true"] .effect-name { color: var(--text); font-weight: 560; }
 
-.effect-note {
-  font-size: 10.5px;
-  color: var(--dimmer);
-  text-align: right;
-  white-space: nowrap;
-}
+.effect-note { display: none; }
 
 .effect:focus-visible { outline-offset: -2px; }
 

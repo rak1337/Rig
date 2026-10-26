@@ -821,8 +821,8 @@ function buildEffects() {
     button.dataset.effect = effect.id;
     button.setAttribute("role", "radio");
     button.setAttribute("aria-checked", "false");
-    button.innerHTML = `<span class="effect-name">${effect.name}</span>
-      <span class="effect-note">${effect.note}</span>`;
+    button.title = effect.note;
+    button.innerHTML = `<span class="effect-name">${effect.name}</span>`;
     frag.append(button);
   }
   dom.effects.replaceChildren(frag);
