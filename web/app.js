@@ -261,6 +261,7 @@ let profilesData = { active: null, frontmost: null, profiles: [] };
 let device = { layout: "tkl", per_key: true, logo: true };
 let lastRevision = 0;
 let lastApplyAt = 0;
+let ready = false;
 let capture = null;
 let pendingFrom = null;
 let bindingMacro = null;
@@ -614,6 +615,8 @@ function keyColors(now) {
 }
 
 function render(now = 0) {
+  if (!boards.length) return;
+
   if (currentView === "lighting") {
     const colors = keyColors(now);
     for (const entry of boards[0].keys) {
@@ -654,6 +657,7 @@ function wantsMotion() {
 
 function tick(now) {
   frameHandle = null;
+  if (!ready) return;
   if (dirty || wantsMotion()) {
     render(now);
     dirty = false;
@@ -664,6 +668,7 @@ function tick(now) {
 /// Ask for one paint on the next frame instead of painting synchronously in
 /// every input handler.
 function invalidate() {
+  if (!ready) return;
   dirty = true;
   if (frameHandle === null) frameHandle = requestAnimationFrame(tick);
 }
@@ -699,7 +704,7 @@ async function request(url, options = {}) {
 }
 
 async function pollState() {
-  if (document.hidden) return;
+  if (!ready || document.hidden) return;
   try {
     const data = await request("/api/state");
     if (typeof data.revision !== "number" || data.revision === lastRevision) return;
@@ -715,6 +720,7 @@ async function pollState() {
 }
 
 function syncPolling() {
+  if (!ready && !boards.length) return;
   const wanted = currentView === "lighting" && !document.hidden
     && state.effect !== "off" && state.effect !== "paint";
   if (wanted && frameTimer === null) {
@@ -1385,6 +1391,7 @@ function cancelCapture() {
 }
 
 function syncKeysPolling() {
+  if (!ready) return;
   const wanted = currentView === "keys" && !document.hidden;
   if (wanted && keysTimer === null) {
     fetchKeys();
@@ -1541,7 +1548,14 @@ async function boot() {
   // The layout follows the keyboard we actually found; unknown boards fall back
   // to a generic drawing rather than pretending to be this one.
   device = data?.device ?? { layout: "tkl", per_key: true, logo: true };
-  boards = [buildBoard(dom.keyboard, device), buildBoard(dom.studioKeyboard, device)];
+  try {
+    boards = [buildBoard(dom.keyboard, device), buildBoard(dom.studioKeyboard, device)];
+  } catch (err) {
+    boards = [];
+    dom.alert.hidden = false;
+    dom.alert.textContent = `The keyboard could not be drawn: ${err.message}`;
+  }
+  ready = boards.length > 0;
 
   if (data?.state) state = { ...state, ...data.state };
   presets = data?.presets || [];
