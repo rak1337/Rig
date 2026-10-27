@@ -1,0 +1,43 @@
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+env:
+  RUST_BACKTRACE: 1
+
+jobs:
+  release:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Test
+        run: cargo test --locked
+
+      - name: Build
+        run: cargo build --release --locked
+
+      - name: Bundle the app
+        run: ./scripts/bundle.sh
+
+      - name: Package
+        run: |
+          mkdir -p out
+          tar -czf "out/rig-${GITHUB_REF_NAME}-macos-arm64.tar.gz" -C target/release rig
+          ditto -c -k --keepParent dist/Rig.app "out/Rig-${GITHUB_REF_NAME}.app.zip"
+          (cd out && shasum -a 256 * > SHA256SUMS)
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true
+          name: Rig ${{ github.ref_name }}
