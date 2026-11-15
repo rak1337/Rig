@@ -6,13 +6,16 @@ cd "$(dirname "$0")/.."
 
 cargo build --release
 
+# One version, kept in Cargo.toml.
+VERSION=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n 1)
+
 APP="dist/Rig.app"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp target/release/rig "$APP/Contents/MacOS/rig"
 cp assets/Rig.icns "$APP/Contents/Resources/Rig.icns"
 
-cat > "$APP/Contents/Info.plist" <<'PLIST'
+cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -23,8 +26,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleExecutable</key><string>rig</string>
   <key>CFBundleIconFile</key><string>Rig</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.1.0</string>
-  <key>CFBundleVersion</key><string>2</string>
+  <key>CFBundleShortVersionString</key><string>${VERSION}</string>
+  <key>CFBundleVersion</key><string>${VERSION}</string>
   <key>LSMinimumSystemVersion</key><string>12.0</string>
   <key>LSApplicationCategoryType</key><string>public.app-category.utilities</string>
   <key>NSHighResolutionCapable</key><true/>
@@ -35,5 +38,5 @@ PLIST
 codesign --force --sign - "$APP" >/dev/null 2>&1 \
   || echo "note: ad-hoc signing failed; the app still runs unsigned"
 
-echo "built $APP"
+echo "built $APP ($VERSION)"
 echo "open it with: open $APP"

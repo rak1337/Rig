@@ -91,8 +91,9 @@ Then point `rig.azmuth.dev` at the tunnel (`cloudflared tunnel route dns`), and
 put Cloudflare Access in front of it. With Access authenticating the browser,
 `RIG_TOKEN` becomes redundant — drop it and let Access be the gate.
 
-Releases for Rig are a tag away: `deploy/workflows/rig-release.yml` builds and
-attaches a macOS binary on `v*`.
+Releases for Rig are a tag away: pushing `v*` runs
+[`.github/workflows/release.yml`](../.github/workflows/release.yml), which tests,
+builds, bundles `Rig.app` and publishes both to GitHub Releases.
 
 ## The registry
 

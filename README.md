@@ -294,6 +294,13 @@ CI runs `cargo test --locked` and a release build on macOS for every push to
 `main` and every pull request. A `v*` tag runs the same steps, bundles the app
 and publishes the release.
 
+**Releasing:** bump `version` in `Cargo.toml` (the app bundle reads it from
+there), add a `CHANGELOG.md` entry, then tag and push:
+
+```sh
+git tag -a v1.2.3 -m "Rig 1.2.3" && git push origin v1.2.3
+```
+
 The console is plain HTML, CSS and JS in `web/` with no build step. Because it
 is embedded at compile time, rebuild after editing it.
 

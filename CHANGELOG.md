@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.1.1
+
+- `rig --help` lists every flag, including `--pid`, `--host`, `--token` and
+  `--test`, and prints the version
+- `Rig.app` takes its version from `Cargo.toml`, so a release is one bump
+- the release workflow runs on `macos-latest`, after `macos-14` stopped being
+  offered; the stale copy in `deploy/workflows/` is gone
+- `actions/checkout@v5` in CI, off the deprecated Node 20 runtime
+- the README gains a short release checklist
+
 ## 1.1.0
 
 **Look**

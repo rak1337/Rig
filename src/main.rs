@@ -559,17 +559,26 @@ fn main() {
 
     if args.iter().any(|a| a == "--help" || a == "-h") {
         println!(
-            "rig — a control console for Razer keyboards on macOS\n\n\
-             usage: rig [--port 7311] [--no-open] [--no-restore]\n\
-             \x20      rig --probe\n\
-             \x20      rig --install-login | --uninstall-login\n\
-             \x20      rig --test\n\n\
+            "rig {} — a control console for Razer keyboards on macOS\n\n\
+             usage: rig [--port 7311] [--no-open] [--no-restore] [--pid 0209]\n\
+             \x20          [--host 127.0.0.1] [--token <t>]\n\
+             \x20      rig --probe | --test\n\
+             \x20      rig --install-login | --uninstall-login\n\n\
+             --port <n>         serve the console on another port (default 7311)\n\
+             --no-open          do not open the browser on launch\n\
+             --no-restore       do not re-apply the saved state on launch\n\
+             --pid <hex>        target another Razer product id (default 0209)\n\
+             --host <addr>      listen beyond loopback; requires a token\n\
+             --token <t>        token for --host (or RIG_TOKEN; random if unset)\n\
              --probe            read firmware, device mode, brightness and the\n\
              \x20                  indicator LEDs straight from the board\n\
-             --install-login    start at login and re-apply the saved look\n\
-             --no-restore       do not re-apply the saved state on launch\n\n\
+             --test             set static white and read the firmware version\n\
+             --install-login    start at login (needed only for animated effects\n\
+             \x20                  and key features; still looks stay on the board)\n\
+             --uninstall-login  remove the login item\n\n\
              Serves the console at http://127.0.0.1:7311. State and presets live in\n\
-             ~/Library/Application Support/Rig/state.json"
+             ~/Library/Application Support/Rig/state.json",
+            env!("CARGO_PKG_VERSION")
         );
         return;
     }
