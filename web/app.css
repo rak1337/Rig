@@ -82,6 +82,8 @@ button { font-family: inherit; }
 
 .bar-left svg { width: 20px; height: 20px; fill: var(--green); }
 
+.bar-left .logo .off { fill: #2c2f31; }
+
 .wordmark {
   font-size: 15px;
   font-weight: 700;

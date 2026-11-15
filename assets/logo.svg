@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Rig">
+  <style>
+    .off { fill: #2c2f31; }
+    @media (prefers-color-scheme: light) { .off { fill: #d6dbd8; } }
+  </style>
+  <rect x="0" y="0" width="16" height="16" rx="4" fill="#96ff78"/>
+  <rect x="21" y="0" width="16" height="16" rx="4" fill="#82f565"/>
+  <rect x="42" y="0" width="16" height="16" rx="4" fill="#6dea52"/>
+  <rect x="63" y="0" width="16" height="16" rx="4" fill="#58e03f"/>
+  <rect x="84" y="0" width="16" height="16" rx="4" class="off"/>
+  <rect x="0" y="21" width="16" height="16" rx="4" fill="#82f565"/>
+  <rect x="21" y="21" width="16" height="16" rx="4" class="off"/>
+  <rect x="42" y="21" width="16" height="16" rx="4" class="off"/>
+  <rect x="63" y="21" width="16" height="16" rx="4" class="off"/>
+  <rect x="84" y="21" width="16" height="16" rx="4" fill="#3cc827"/>
+  <rect x="0" y="42" width="16" height="16" rx="4" fill="#6dea52"/>
+  <rect x="21" y="42" width="16" height="16" rx="4" fill="#58e03f"/>
+  <rect x="42" y="42" width="16" height="16" rx="4" fill="#44d62c"/>
+  <rect x="63" y="42" width="16" height="16" rx="4" fill="#3cc827"/>
+  <rect x="84" y="42" width="16" height="16" rx="4" class="off"/>
+  <rect x="0" y="63" width="16" height="16" rx="4" fill="#58e03f"/>
+  <rect x="21" y="63" width="16" height="16" rx="4" class="off"/>
+  <rect x="42" y="63" width="16" height="16" rx="4" class="off"/>
+  <rect x="63" y="63" width="16" height="16" rx="4" fill="#35bb22"/>
+  <rect x="84" y="63" width="16" height="16" rx="4" class="off"/>
+  <rect x="0" y="84" width="16" height="16" rx="4" fill="#44d62c"/>
+  <rect x="21" y="84" width="16" height="16" rx="4" class="off"/>
+  <rect x="42" y="84" width="16" height="16" rx="4" class="off"/>
+  <rect x="63" y="84" width="16" height="16" rx="4" class="off"/>
+  <rect x="84" y="84" width="16" height="16" rx="4" fill="#26a018"/>
+</svg>

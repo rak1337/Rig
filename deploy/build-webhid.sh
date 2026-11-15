@@ -10,6 +10,7 @@ mkdir -p "$OUT/fonts"
 cp webhid/index.html "$OUT/index.html"
 cp webhid/hid.js "$OUT/hid.js"
 cp web/app.css "$OUT/app.css"
+cp assets/logo.svg "$OUT/favicon.svg"
 cp web/fonts/Archivo.ttf "$OUT/fonts/archivo.ttf"
 cp web/fonts/IBMPlexMono.ttf "$OUT/fonts/plex-mono.ttf"
 

@@ -20,6 +20,7 @@ const APP_JS: &str = include_str!("../web/app.js");
 const WEBHID_HTML: &str = include_str!("../web/webhid.html");
 const FONT_ARCHIVO: &[u8] = include_bytes!("../web/fonts/Archivo.ttf");
 const FONT_MONO: &[u8] = include_bytes!("../web/fonts/IBMPlexMono.ttf");
+const FAVICON_SVG: &str = include_str!("../assets/logo.svg");
 
 const DEFAULT_PORT: u16 = 7311;
 const PRODUCT_ID: u16 = devices::DEFAULT_PID;
@@ -682,6 +683,9 @@ fn main() {
             ),
             (Method::Get, "/fonts/archivo.ttf") => {
                 respond_bytes(request, FONT_ARCHIVO.to_vec(), "font/ttf")
+            }
+            (Method::Get, "/favicon.svg") => {
+                respond_bytes(request, FAVICON_SVG.as_bytes().to_vec(), "image/svg+xml")
             }
             (Method::Get, "/fonts/plex-mono.ttf") => {
                 respond_bytes(request, FONT_MONO.to_vec(), "font/ttf")
