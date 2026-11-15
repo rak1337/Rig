@@ -57,7 +57,13 @@ That prints the firmware version, device mode, brightness and indicator LEDs
 read straight from the board.
 
 > [!TIP]
-> For day-to-day use, build the app bundle instead (see [Install](#install)).
+> Rig doesn't have to stay running for lighting. The board keeps the last look
+> it was sent, so you can set a still colour or a painted layout, quit, and it
+> stays. Keep Rig running only for animated effects, remaps, macros, hotkeys,
+> per-app profiles and idle blanking.
+
+> [!TIP]
+> If you do keep it running, build the app bundle (see [Install](#install)).
 > macOS ties permissions to an app's identity, and a bundle keeps that identity
 > across rebuilds where a bare binary may not.
 
@@ -107,8 +113,6 @@ Pushing a `v*` tag builds a release with
 `rig-<tag>-macos-arm64.tar.gz` (the binary), `Rig-<tag>.app.zip` and
 `SHA256SUMS`. Find them on the
 [releases page](https://github.com/rak1337/Rig/releases).
-<!-- TODO(human): no GitHub release is published yet for v1.0.0; push the tag
-     (or re-run the release workflow) before pointing people here. -->
 
 > [!NOTE]
 > Prebuilt binaries are Apple Silicon only. On an Intel Mac, build from source.
@@ -123,7 +127,8 @@ Pushing a `v*` tag builds a release with
 ```
 
 This writes `~/Library/LaunchAgents/dev.rakshak.rig.plist` pointing at the
-binary you ran it from, so the saved look is re-applied every time you log in.
+binary you ran it from. You only need it if you use animated effects or the key
+features; a still look stays on the board without it.
 
 ## Permissions
 
@@ -326,10 +331,12 @@ else has the port. Quit the other copy or pass `--port`.
 </details>
 
 <details>
-<summary><b>Lighting resets after unplugging or sleep</b></summary>
+<summary><b>An effect stopped moving after I quit Rig</b></summary>
 
-Effects are host-driven, so the board forgets them without Rig running.
-Relaunching re-applies the saved look; `--install-login` makes that automatic.
+Animated effects are drawn by Rig at ~30 fps and sent frame by frame. When Rig
+quits, the board keeps showing the last frame it received. Still looks are
+unaffected; for animation, keep Rig running (`--install-login` starts it at
+login).
 
 </details>
 
@@ -339,7 +346,8 @@ Relaunching re-applies the saved look; `--install-login` makes that automatic.
   different effect dialect.
 - Firmware macros and on-board remaps are programmed from Windows Synapse and
   are not reimplemented here; Rig's remaps and macros run on the Mac.
-- Effects are host-driven: unplugging clears them until Rig re-applies them.
+- Animated effects are rendered on the Mac and need Rig running; without it the
+  board holds the last frame.
 
 ## License
 

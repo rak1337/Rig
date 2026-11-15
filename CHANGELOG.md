@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.1.0
+
+**Look**
+- a new mark: a 5 × 5 key grid with the lit keys spelling R, used for the app
+  icon, the console header and a new favicon (`/favicon.svg`, also shipped in
+  the WebHID build)
+- light and dark README banners and a social preview, all rendered by
+  `assets/make_brand.py`
+
+**Docs**
+- the README is rewritten: quick start, supported hardware, every CLI flag
+  (including `--pid`, `--host`, `--token`), architecture and troubleshooting
+- it now says plainly that a still look stays on the board after Rig quits;
+  only animation and the key features need Rig running
+
 ## 1.0.0
 
 First release. Tested against a BlackWidow Tournament Edition Chroma
